@@ -101,6 +101,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
 .photo-btn { position: relative; overflow: hidden; }
 .photo-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .offline { background: var(--kid-bubble); border-radius: 12px; padding: 10px 12px; font-size: .9em; }
+.choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.choices button { border-width: 1.5px; font-weight: 400; background: var(--ice); }
+.voicebox { display: grid; gap: 8px; border-top: 2px dashed var(--line); padding-top: 12px; }
+.voicebox h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; margin: 0; }
+.voicebox select, .voicebox input[type=range] { font: inherit; font-size: .9rem; color: var(--ink); width: 100%; box-sizing: border-box; }
+.voicebox select { background: var(--sky); border: 1.5px solid var(--line); border-radius: 10px; padding: 6px 8px; }
+.voicebox label { display: grid; gap: 3px; font-size: .78em; font-weight: 700; color: var(--ink-soft); letter-spacing: .04em; text-transform: uppercase; }
+.voicebox .hint { font-size: .8em; color: var(--ink-soft); margin: 0; }
+.talk-tip { font-size: .9em; background: var(--floe); border-radius: 12px; padding: 10px 12px; }
+.msg.speaking .bubble { outline: 3px solid var(--sun); outline-offset: 2px; }
+button[aria-pressed="true"] { background: var(--ink); color: var(--ice); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } button:hover:not(:disabled) { transform: none; } }
 </style>
 
@@ -120,6 +131,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
         <label for="f-grade">Grade or class<input id="f-grade" maxlength="40" placeholder="e.g. 7th grade, Math 7"></label>
         <label for="f-helps">What helps me learn<textarea id="f-helps" placeholder="e.g. pictures first, one step at a time, calculator OK, no timers"></textarea></label>
         <label for="f-interests">Things I like<textarea id="f-interests" placeholder="e.g. soccer, Minecraft, baking"></textarea></label>
+        <label for="f-feelings">How math feels<textarea id="f-feelings" placeholder="Piper asks this in the first chat"></textarea></label>
+        <label for="f-wins">Wins jar<textarea id="f-wins" placeholder="Things I figured out that I couldn't before"></textarea></label>
         <label for="f-mastered">Got it!<textarea id="f-mastered"></textarea></label>
         <label for="f-working">Working on<textarea id="f-working"></textarea></label>
         <label for="f-tricky">Tricky spots<textarea id="f-tricky"></textarea></label>
@@ -129,15 +142,24 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
     <div class="row">
       <button id="saveNb" class="primary" type="button">Save notebook</button>
       <button id="updateNb" type="button">Update from today</button>
+      <button id="redoIntro" type="button">Redo intro chat</button>
     </div>
     <div class="status" id="nbStatus" role="status"></div>
     <p class="privacy">Piper only needs a nickname. Please leave out last names, school names and medical details. A grown-up can fill in "What helps me learn."</p>
+    <div class="voicebox" id="voicebox">
+      <h2>Piper's voice</h2>
+      <label for="voiceSel">Voice<select id="voiceSel"></select></label>
+      <label for="voiceRate">Speed<input type="range" id="voiceRate" min="0.75" max="1.2" step="0.05" value="0.95"></label>
+      <div class="row"><button type="button" id="testVoice">Test voice</button></div>
+      <p class="hint" id="voiceHint">The most natural voices: Microsoft Edge (voices with "Natural" in the name), or an iPhone, iPad or Mac with an Enhanced or Premium voice downloaded under Settings, Accessibility, Spoken Content.</p>
+    </div>
   </aside>
 
   <main class="chat">
     <div class="chat-top">
       <span class="title">Math time with Piper</span>
       <div class="row">
+        <button id="talkMode" type="button" aria-pressed="false">🔊 Piper talks</button>
         <button id="bigText" type="button" aria-pressed="false">Bigger text</button>
         <button id="newProblem" type="button">New problem</button>
       </div>
@@ -157,8 +179,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
         <span id="attachName"></span>
         <button type="button" id="removePhoto">Remove photo</button>
       </div>
+      <div class="talk-tip" id="talkTip" hidden>To talk to Piper, tap the 🎤 on your keyboard and speak, then press Send. On a computer: Windows key + H on Windows, or press the Fn (Globe) key twice on a Mac. Turn on 🔊 Piper talks to hear the answers.</div>
       <form class="send" id="sendForm">
         <label class="photo-btn" id="photoLabel"><button type="button" tabindex="-1">📷 Photo</button><input type="file" id="photo" accept="image/*" aria-label="Add a photo of the problem or your work"></label>
+        <button type="button" id="micBtn" aria-controls="talkTip" aria-expanded="false">🎤 Talk</button>
         <textarea id="box" rows="2" placeholder="Type your question or your answer..." aria-label="Message to Piper"></textarea>
         <button class="primary" id="sendBtn" type="submit">Send</button>
       </form>
@@ -200,17 +224,43 @@ SAFETY
 - No help on a test or quiz happening right now; offer practice afterward.
 - Stay on math. Gently steer back otherwise.
 
+GET-TO-KNOW-YOU MODE (only when the page says MODE: GET TO KNOW YOU)
+Before any math, have a short, warm conversation. One question per message. React to each answer with real interest in one sentence before asking the next. Cover these in order, skipping anything the notebook already has:
+1. What to call them (nickname only).
+2. Grade or math class.
+3. Things they love doing (you will use them in word problems).
+4. How math feels right now, with this line at the end: [choices: 😣 I hate it | 😕 It's hard | 😐 It's OK | 🙂 I kind of like it | 😄 I love it]
+5. One time math went OK or felt good, even tiny (money, games, cooking, sports scores, building count). If they can't think of one, help them find one; math hides in everyday life.
+6. What makes math hard and what helps (pictures, talking it through, examples first, one step at a time, extra time). Say a grown-up nearby is welcome to add to this.
+7. Whether you should talk out loud: [choices: Yes, talk to me | No, just text]. When they answer, put [voice:on] or [voice:off] on its own line.
+Never rush to fix a negative feeling. Thank them for being honest, say lots of people feel that way, and that feelings about math can change.
+When done, give a one-sentence summary of what you learned, ask if they want to start with homework or a fun warm-up, and put [intake-done] on its own last line.
+
+REBUILD HOW MATH FEELS (always, quietly, never preachy)
+- Math is noticing, reasoning and making sense, not speed or memorizing. Ask "how did you think about it?" and welcome more than one way.
+- There is no such thing as a "math person." Never agree with "I'm bad at math." Answer with evidence: "You just figured out X. That's math." Add "yet" to "I can't."
+- Mistakes are rough drafts. Show what an error teaches; celebrate a useful mistake.
+- Collect evidence: when they solve something they could not do before, name it and say it goes in their Wins jar. Put [win: a few words] on its own line.
+- Use the notebook's wins and feelings to point out real progress over time.
+- Connect problems to their interests and everyday life.
+- No speed pressure. Thinking time is good thinking.
+- Before a test, if worry comes up: suggest they write or say what worries them for a minute, and that a racing heart can mean the body is getting ready to work hard.
+- Credit specific strategies and persistence, never talent.
+- If a grown-up says "I was never good at math either," kindly invite them to be curious alongside the kid instead.
+
 FORMAT
+- Your replies may be read aloud, so write how a person talks: short sentences, no lines made only of symbols.
+- When a short list of answers helps (yes or no, feelings, picking a method, multiple choice), end with one line like [choices: A | B | C], at most 5 short options. The page turns them into buttons. The learner can always answer in their own words.
 - Plain text with short paragraphs. You may use **bold**, simple "- " bullets and numbered steps. No tables, no LaTeX: write 3/4, x^2, sqrt(9). Put each math step on its own line.
 - At most one emoji per message (like a penguin, fish or snowflake), often none.`;
 
 const $ = (id) => document.getElementById(id);
-const FIELDS = ["nickname", "grade", "helps", "interests", "mastered", "working", "tricky", "next"];
+const FIELDS = ["nickname", "grade", "helps", "interests", "feelings", "wins", "mastered", "working", "tricky", "next"];
 const log = $("log"), box = $("box"), sendBtn = $("sendBtn");
 let turns = [];             // the page keeps the chat; Claude keeps nothing between calls
 let photo = null;           // current problem photo (Blob), re-sent while working this problem
 let photoUrl = null;
-let sample = null, imgLimits = null, db = null, userId = null, busy = false;
+let sample = null, imgLimits = null, db = null, userId = null, busy = false, intake = false;
 
 function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -219,7 +269,7 @@ function readNb() { const o = {}; FIELDS.forEach(f => o[f] = $("f-" + f).value.t
 function fillNb(o) { if (!o) return; FIELDS.forEach(f => { if (typeof o[f] === "string") $("f-" + f).value = o[f]; }); }
 function nbText() {
   const n = readNb();
-  const lines = [["Nickname", n.nickname], ["Grade/class", n.grade], ["What helps me learn", n.helps], ["Things I like", n.interests], ["Got it!", n.mastered], ["Working on", n.working], ["Tricky spots", n.tricky], ["Next time start with", n.next]]
+  const lines = [["Nickname", n.nickname], ["Grade/class", n.grade], ["What helps me learn", n.helps], ["Things I like", n.interests], ["How math feels", n.feelings], ["Wins jar", n.wins], ["Got it!", n.mastered], ["Working on", n.working], ["Tricky spots", n.tricky], ["Next time start with", n.next]]
     .filter(([, v]) => v).map(([k, v]) => k + ": " + v);
   return lines.length ? lines.join("\n") : "(empty: this is a new learner. Early on, ask what to call them and what grade or class they are in, one question at a time.)";
 }
@@ -242,6 +292,35 @@ function render(md) {
   return out.join("");
 }
 
+// Piper's replies can carry small markers the page acts on: [choices: a | b], [win: ...], [voice:on|off], [intake-done].
+function parseReply(raw) {
+  const r = { choices: null, wins: [], voice: null, done: false };
+  let t = raw.replace(/\[intake-done\]/gi, () => { r.done = true; return ""; });
+  t = t.replace(/\[voice:\s*(on|off)\]/gi, (m, v) => { r.voice = v.toLowerCase(); return ""; });
+  t = t.replace(/\[win:\s*([^\]]+)\]/gi, (m, w) => { r.wins.push(w.trim()); return ""; });
+  t = t.replace(/\[choices:([^\]]*)\]/i, (m, c) => { r.choices = c.split("|").map(x => x.trim()).filter(Boolean).slice(0, 5); return ""; });
+  t = t.replace(/\[[a-z-]*(:[^\]]*)?$/i, "");
+  r.text = t.trim();
+  return r;
+}
+function showPiper(bubble, raw, final) {
+  const r = parseReply(raw);
+  bubble.innerHTML = render(r.text);
+  bubble.dataset.say = r.text;
+  if (final && r.choices) {
+    const row = document.createElement("div");
+    row.className = "choices";
+    r.choices.forEach(c => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = c;
+      b.onclick = () => { row.querySelectorAll("button").forEach(x => x.disabled = true); ask(c); };
+      row.append(b);
+    });
+    bubble.append(row);
+  }
+  return r;
+}
+
 function addMsg(who, text, imgUrl) {
   const wrap = document.createElement("div");
   wrap.className = "msg " + who;
@@ -250,13 +329,13 @@ function addMsg(who, text, imgUrl) {
   if (who === "piper") { av.src = AVATAR; wrap.append(av); }
   const b = document.createElement("div");
   b.className = "bubble";
-  if (who === "piper") b.innerHTML = render(text); else b.textContent = text;
+  if (who === "piper") showPiper(b, text, true); else b.textContent = text;
   if (imgUrl) { const i = document.createElement("img"); i.className = "shot"; i.src = imgUrl; i.alt = "Photo sent to Piper"; b.append(i); }
   wrap.append(b);
   if (who === "piper" && "speechSynthesis" in window) {
     const sp = document.createElement("button");
     sp.type = "button"; sp.className = "speak"; sp.textContent = "Read aloud";
-    sp.onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(b.innerText); u.rate = .92; speechSynthesis.speak(u); } catch (e) {} };
+    sp.onclick = () => speak(b.dataset.say || b.innerText, wrap);
     wrap.append(sp);
   }
   log.append(wrap);
@@ -268,8 +347,8 @@ function greet() {
   const n = readNb();
   const hi = n.nickname
     ? `Hi ${n.nickname}! 🐧 Good to see you again.` + (n.next ? `\n\nLast time I wrote down: start with **${n.next}**. Want to do that, or is there new homework?` : `\n\nWhat are we working on today?`)
-    : `Hi! I'm Piper, a penguin who is bad at flying but pretty good at fractions. 🐧\n\nWhat should I call you? A first name or nickname is perfect.`;
-  addMsg("piper", hi + `\n\nTip: tap **📷 Photo** to send me a picture of the problem, and your work too. Mistakes are my favorite snack.`);
+    : `Hi! I'm Piper, a penguin who is bad at flying but pretty good at fractions. 🐧\n\nBefore we do any math, I'd love to get to know you a little. What should I call you? A first name or nickname is perfect.`;
+  addMsg("piper", hi + (n.nickname ? `\n\nTip: tap **📷 Photo** to send me a picture of the problem, and your work too. Mistakes are my favorite snack.` : ""));
   turns.push({ role: "assistant", content: hi });
 }
 
@@ -293,13 +372,17 @@ async function ask(userText) {
   const bubble = addMsg("piper", "");
   bubble.innerHTML = '<p class="thinking">Piper is thinking... 🐟</p>';
   const recent = turns.slice(-24).map(({ role, content }) => ({ role, content }));
-  const header = { role: "user", content: RULES + "\n\nPIPER'S NOTEBOOK (what you remember about this learner):\n" + nbText() + "\n\n" + (sentPhoto ? "A photo of the current problem is attached." : "No photo attached right now.") + "\n\nThe conversation follows. Reply as Piper to the last message." };
+  const header = { role: "user", content: RULES + "\n\nMODE: " + (intake ? "GET TO KNOW YOU" : "TUTORING") + "\n\nPIPER'S NOTEBOOK (what you remember about this learner):\n" + nbText() + "\n\n" + (sentPhoto ? "A photo of the current problem is attached." : "No photo attached right now.") + "\n\nThe conversation follows. Reply as Piper to the last message." };
   try {
-    const opts = { cache: false, onText: ({ text }) => { bubble.innerHTML = render(text); log.scrollTop = log.scrollHeight; } };
+    const opts = { cache: false, onText: ({ text }) => { showPiper(bubble, text, false); log.scrollTop = log.scrollHeight; } };
     if (sentPhoto && imgLimits) opts.images = [sentPhoto];
     const { text } = await sample([header, ...recent], opts);
-    bubble.innerHTML = render(text);
+    const r = showPiper(bubble, text, true);
     turns.push({ role: "assistant", content: text });
+    if (r.voice) setTalk(r.voice === "on");
+    if (r.wins.length) addWins(r.wins);
+    if (autoTalk) speak(r.text, bubble.parentElement);
+    if (r.done && intake) { intake = false; updateNotebook(true); }
   } catch (e) {
     bubble.innerHTML = render((e && e.text ? e.text + "\n\n" : "") + errText(e));
   } finally {
@@ -357,7 +440,15 @@ async function saveNb(msg) {
   }
 }
 $("saveNb").onclick = () => saveNb();
-$("updateNb").onclick = async () => {
+function addWins(ws) {
+  const el = $("f-wins");
+  const have = el.value.split(/\n|;\s*/).map(x => x.trim()).filter(Boolean);
+  ws.forEach(w => { if (!have.includes(w)) have.push(w); });
+  el.value = have.slice(-8).join("\n");
+  saveNb("Added to the Wins jar and saved.");
+}
+$("updateNb").onclick = () => updateNotebook(false);
+async function updateNotebook(auto) {
   const st = $("nbStatus");
   if (!sample) { $("offline").hidden = false; return; }
   if (turns.filter(t => t.role === "user").length < 2) { st.textContent = "Chat with Piper a bit first, then update."; st.className = "status"; return; }
@@ -365,7 +456,7 @@ $("updateNb").onclick = async () => {
   const chat = turns.slice(-30).map(t => (t.role === "user" ? "Learner: " : "Piper: ") + t.content).join("\n");
   try {
     const out = await sample.json(`You maintain a short learner profile for a middle school math tutor named Piper. Update it from today's session.
-Rules: keep it short (each field under 160 characters). Never include last names, school names, diagnoses or medical details; write only what helps ("likes number lines"). Move a topic to "mastered" only if the learner solved two varied problems without hints. Make "tricky" specific misconceptions. Keep "helps" from the current profile unless the session clearly shows something new that helped. Keep "nickname" and "grade" unless the learner gave new ones.
+Rules: keep it short (each field under 160 characters). Never include last names, school names, diagnoses or medical details; write only what helps ("likes number lines"). Move a topic to "mastered" only if the learner solved two varied problems without hints. Make "tricky" specific misconceptions. Keep "helps" from the current profile unless the session clearly shows something new that helped. Keep "nickname" and "grade" unless the learner gave new ones. "feelings" records how math feels and any change over time (for example "started: hard; today: kind of OK"). "wins" keeps every existing win and adds new ones, one per line, newest last, at most 8.
 
 CURRENT PROFILE:
 ${JSON.stringify(readNb())}
@@ -373,15 +464,108 @@ ${JSON.stringify(readNb())}
 TODAY'S SESSION:
 ${chat}
 
-Reply with only a JSON object with these string keys: nickname, grade, helps, interests, mastered, working, tricky, next.`, { modelTier: "quick", cache: false });
-    if (out && typeof out === "object") { fillNb(out); await saveNb("Notebook updated from today and saved."); }
+Reply with only a JSON object with these string keys: nickname, grade, helps, interests, feelings, wins, mastered, working, tricky, next.`, { modelTier: "quick", cache: false });
+    if (out && typeof out === "object") { fillNb(out); await saveNb(auto ? "Your notebook now has what you shared. Saved." : "Notebook updated from today and saved."); }
   } catch (e) { st.textContent = errText(e); st.className = "status"; }
+}
+$("redoIntro").onclick = () => {
+  intake = true;
+  turns = [];
+  const hi = "Let's get to know each other again! 🐧 Tell me a bit about how you're doing with math these days. First, what should I call you now?";
+  addMsg("piper", hi);
+  turns.push({ role: "assistant", content: hi });
 };
+
+// Voice: the device's own speech engine, ranked so the most natural voice wins.
+let voices = [], voice = null, rate = 0.95, autoTalk = false;
+const ROBOTIC = /Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Good News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Junior|Ralph|Fred|Kathy|Grandma|Grandpa|Eddy|Flo|Reed|Rocko|Sandy|Shelley|espeak/i;
+function scoreVoice(v) {
+  if (!/^en/i.test(v.lang)) return -1;
+  let s = 10;
+  if (/natural|neural/i.test(v.name)) s += 8;
+  if (/premium|enhanced|siri/i.test(v.name)) s += 6;
+  if (/online/i.test(v.name)) s += 3;
+  if (/google/i.test(v.name)) s += 3;
+  if (/Samantha|Ava|Aria|Jenny|Emma|Andrew|Brian|Zoe|Evan|Nathan|Michelle|Ana/i.test(v.name)) s += 2;
+  if (/en[-_]US/i.test(v.lang)) s += 1;
+  if (ROBOTIC.test(v.name)) s -= 20;
+  return s;
+}
+function loadVoices() {
+  if (!("speechSynthesis" in window)) return;
+  const all = speechSynthesis.getVoices();
+  voices = all.filter(v => scoreVoice(v) > 0).sort((a, b) => scoreVoice(b) - scoreVoice(a));
+  const sel = $("voiceSel");
+  sel.innerHTML = "";
+  voices.forEach((v, i) => { const o = document.createElement("option"); o.value = String(i); o.textContent = v.name.replace(/^Microsoft\s+/, "") + " (" + v.lang + ")"; sel.append(o); });
+  const saved = load("piper-voice");
+  const idx = Math.max(0, voices.findIndex(v => v.name === saved));
+  voice = voices[idx] || null;
+  sel.value = String(idx);
+}
+function forSpeech(t) {
+  return t
+    .replace(/\*\*|`|#+/g, "")
+    .replace(/^\s*[-*•]\s+/gm, "")
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "")
+    .replace(/(\w)\^2\b/g, "$1 squared").replace(/(\w)\^3\b/g, "$1 cubed").replace(/(\w)\^\(?(-?\w+)\)?/g, "$1 to the power of $2")
+    .replace(/sqrt\(([^)]*)\)/gi, "the square root of $1")
+    .replace(/(\d)\s*\/\s*(\d)/g, "$1 over $2")
+    .replace(/([\d)a-z])\s*[*×]\s*(?=[\d(a-z])/gi, "$1 times ")
+    .replace(/([\w)])\s+[-−]\s+(?=[\w(])/g, "$1 minus ")
+    .replace(/(^|[\s(])[-−](?=\d)/g, "$1negative ")
+    .replace(/\s=\s/g, " equals ").replace(/\s≠\s/g, " does not equal ")
+    .replace(/\s<\s/g, " is less than ").replace(/\s>\s/g, " is greater than ")
+    .replace(/\s≤\s/g, " is less than or equal to ").replace(/\s≥\s/g, " is greater than or equal to ")
+    .replace(/π/g, "pi");
+}
+function speak(text, wrap) {
+  if (!("speechSynthesis" in window)) return;
+  try {
+    speechSynthesis.cancel();
+    document.querySelectorAll(".msg.speaking").forEach(m => m.classList.remove("speaking"));
+    const parts = forSpeech(text).split(/(?<=[.!?])\s+|\n+/).map(x => x.trim()).filter(Boolean);
+    parts.forEach((p, i) => {
+      const u = new SpeechSynthesisUtterance(p);
+      if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = "en-US";
+      u.rate = rate; u.pitch = 1.05;
+      if (i === 0 && wrap) u.onstart = () => wrap.classList.add("speaking");
+      if (i === parts.length - 1 && wrap) u.onend = u.onerror = () => wrap.classList.remove("speaking");
+      speechSynthesis.speak(u);
+    });
+  } catch (e) {}
+}
+function setTalk(on) {
+  autoTalk = on;
+  $("talkMode").setAttribute("aria-pressed", String(on));
+  store("piper-talk", on ? "1" : "0");
+  if (!on) { try { speechSynthesis.cancel(); } catch (e) {} }
+}
+$("talkMode").onclick = () => setTalk(!autoTalk);
+$("voiceSel").onchange = () => { voice = voices[+$("voiceSel").value] || null; if (voice) store("piper-voice", voice.name); };
+$("voiceRate").oninput = () => { rate = +$("voiceRate").value; store("piper-rate", String(rate)); };
+$("testVoice").onclick = () => speak("Hi! I'm Piper. Three fourths of a pizza is a lot of pizza, even for a penguin.", null);
+$("micBtn").onclick = () => {
+  const tip = $("talkTip"), open = tip.hidden;
+  tip.hidden = !open;
+  $("micBtn").setAttribute("aria-expanded", String(open));
+  box.focus();
+};
+if ("speechSynthesis" in window) {
+  loadVoices();
+  try { speechSynthesis.addEventListener("voiceschanged", loadVoices); } catch (e) {}
+  const r = parseFloat(load("piper-rate") || ""); if (r) { rate = r; $("voiceRate").value = String(r); }
+  if (load("piper-talk") === "1") setTalk(true);
+} else {
+  $("voicebox").hidden = true; $("talkMode").hidden = true;
+  $("talkTip").textContent = "To talk to Piper, use the microphone on your keyboard to dictate, then press Send.";
+}
 
 // Boot: render from the browser copy right away, then light up Claude and the database.
 try { const local = JSON.parse(load("piper-notebook") || "null"); fillNb(local); } catch (e) {}
 if (load("piper-big") === "1") { document.body.classList.add("big"); $("bigText").setAttribute("aria-pressed", "true"); }
 if (window.matchMedia("(max-width: 860px)").matches && readNb().nickname) $("nbDetails").open = false;
+intake = !readNb().nickname;
 greet();
 
 (async () => {
@@ -404,7 +588,7 @@ greet();
       if (snap.exists) {
         const hadName = !!readNb().nickname;
         fillNb(snap.data());
-        if (!hadName && readNb().nickname) { log.innerHTML = ""; turns = []; greet(); }
+        if (!hadName && readNb().nickname && turns.length <= 1) { intake = false; log.innerHTML = ""; turns = []; greet(); }
       }
     } catch (e) {}
   }

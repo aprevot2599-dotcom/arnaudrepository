@@ -35,4 +35,6 @@ Claude's consumer plans require users to be 18 or older, so a middle schooler sh
 ## Web app
 `piper-app/index.html` is a chat interface for Piper, published as a private claude.ai page: https://claude.ai/artifact/7hWNGJQnaybRBBqh1u2Nnf
 
+New learners start with a short get-to-know-you chat (nickname, grade, interests, how math feels, a time math went well, what helps, voice on or off) that fills the notebook automatically. Piper's replies can offer tap-to-answer buttons, add to a Wins jar, and be spoken aloud with the most natural voice the device has; learners talk back through their keyboard's dictation microphone.
+
 It asks Claude through the viewer's own account (with their permission the first time), accepts photos of problems and work, has quick-help buttons (I'm stuck, Show me a picture, Check my answer, Practice one, I need a break), a Bigger text switch and Read aloud for each message. Piper's Notebook is saved privately per signed-in person, with a copy in the browser as a backup, and "Update from today" rewrites it from the session.

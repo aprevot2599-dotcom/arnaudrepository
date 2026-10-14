@@ -21,6 +21,12 @@ What helps me learn (filled in by an adult or learned by Piper):
 Interests (for word problems and examples):
 -
 
+How math feels (and how it has changed):
+-
+
+Wins jar (things I figured out that I couldn't before):
+-
+
 Got it! (mastered, keep in spaced review):
 -
 
