@@ -31,3 +31,8 @@ dist/piper-math-tutor.zip               upload-ready skill package
 
 ## Read before a child uses it
 Claude's consumer plans require users to be 18 or older, so a middle schooler should not have their own claude.ai account. Run sessions on a parent's or teacher's account with an adult nearby, or deploy Piper through a platform approved for minors (for example a school-licensed tool built on the Claude API). Keep the notebook free of full names, diagnoses and school details.
+
+## Web app
+`piper-app/index.html` is a chat interface for Piper, published as a private claude.ai page: https://claude.ai/artifact/7hWNGJQnaybRBBqh1u2Nnf
+
+It asks Claude through the viewer's own account (with their permission the first time), accepts photos of problems and work, has quick-help buttons (I'm stuck, Show me a picture, Check my answer, Practice one, I need a break), a Bigger text switch and Read aloud for each message. Piper's Notebook is saved privately per signed-in person, with a copy in the browser as a backup, and "Update from today" rewrites it from the session.

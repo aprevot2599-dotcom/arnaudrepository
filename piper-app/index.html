@@ -1,0 +1,412 @@
+<title>Piper the Math Penguin</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* Layout: an ice-floe chat. Piper's notebook sits beside the conversation on wide screens and folds above it on phones. */
+:root {
+  --sky: #E6F4FB;
+  --ice: #FFFFFF;
+  --floe: #CFE8F4;
+  --ink: #1F2D42;
+  --ink-soft: #4C5D74;
+  --scarf: #D63F31;
+  --scarf-ink: #FFFFFF;
+  --sun: #F5B83A;
+  --kid-bubble: #FFF4D6;
+  --line: #B9D6E6;
+  --ok: #2E7D4F;
+  --font-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", Verdana, system-ui, sans-serif;
+  --text-size: 17px;
+  --radius: 18px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --sky: #0F1A2A; --ice: #17263B; --floe: #1E3350; --ink: #EAF3FA; --ink-soft: #A9BDD2;
+    --scarf: #F06A5B; --scarf-ink: #1A0C0A; --sun: #F5C35A; --kid-bubble: #3A3220; --line: #2B4566; --ok: #6FD39A;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --sky: #0F1A2A; --ice: #17263B; --floe: #1E3350; --ink: #EAF3FA; --ink-soft: #A9BDD2;
+  --scarf: #F06A5B; --scarf-ink: #1A0C0A; --sun: #F5C35A; --kid-bubble: #3A3220; --line: #2B4566; --ok: #6FD39A;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  background: var(--sky); color: var(--ink);
+  font-family: var(--font-body); font-size: var(--text-size); line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px;
+}
+body.big { --text-size: 21px; }
+body.big .bubble { letter-spacing: .02em; word-spacing: .12em; line-height: 1.75; }
+.app { max-width: 1120px; margin: 0 auto; display: grid; gap: 20px; grid-template-columns: 300px minmax(0, 1fr); align-items: start; }
+.app > * { min-width: 0; }
+@media (max-width: 860px) { .app { grid-template-columns: minmax(0, 1fr); } .notebook { order: 2; } }
+
+/* Notebook */
+.notebook { background: var(--ice); border: 2px solid var(--line); border-radius: var(--radius); padding: 18px; display: grid; gap: 14px; position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)); }
+@media (max-width: 860px) { .notebook { position: static; } }
+.hello { display: flex; gap: 12px; align-items: center; }
+.hello img { width: 84px; height: 84px; flex: none; }
+.hello h1 { font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; line-height: 1.1; margin: 0; text-wrap: balance; }
+.hello p { margin: 4px 0 0; color: var(--ink-soft); font-size: .9em; }
+details.nb > summary { cursor: pointer; font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+details.nb > summary::-webkit-details-marker { display: none; }
+details.nb > summary::after { content: "▾"; color: var(--ink-soft); }
+details.nb:not([open]) > summary::after { content: "▸"; }
+.fields { display: grid; gap: 10px; margin-top: 10px; }
+.fields label { display: grid; gap: 3px; font-size: .78em; font-weight: 700; color: var(--ink-soft); letter-spacing: .04em; text-transform: uppercase; }
+.fields input, .fields textarea { font: inherit; font-size: .95rem; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink); background: var(--sky); border: 1.5px solid var(--line); border-radius: 10px; padding: 7px 9px; width: 100%; box-sizing: border-box; }
+.fields textarea { resize: vertical; min-height: 54px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.status { font-size: .82em; color: var(--ink-soft); min-height: 1.2em; }
+.status.ok { color: var(--ok); }
+.privacy { font-size: .78em; color: var(--ink-soft); margin: 0; }
+
+/* Buttons */
+button { font: inherit; cursor: pointer; border-radius: 999px; border: 2px solid var(--ink); background: var(--ice); color: var(--ink); padding: 6px 14px; font-size: .9rem; font-weight: 700; }
+button.primary { background: var(--scarf); border-color: var(--scarf); color: var(--scarf-ink); }
+button:hover:not(:disabled) { transform: translateY(-1px); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+
+/* Chat */
+.chat { background: var(--ice); border: 2px solid var(--line); border-radius: var(--radius); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: min(760px, calc(100vh - 32px)); }
+.chat-top { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 2px dashed var(--line); }
+.chat-top .title { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; }
+.log { padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; max-height: 62vh; }
+.msg { display: flex; gap: 10px; align-items: flex-end; max-width: 100%; }
+.msg.kid { flex-direction: row-reverse; }
+.msg img.av { width: 40px; height: 40px; flex: none; }
+.bubble { min-width: 0; max-width: 78ch; padding: 10px 14px; border-radius: 16px 16px 16px 4px; background: var(--floe); overflow-wrap: anywhere; }
+.msg.kid .bubble { border-radius: 16px 16px 4px 16px; background: var(--kid-bubble); }
+.bubble p { margin: 0 0 .5em; } .bubble p:last-child { margin-bottom: 0; }
+.bubble ul, .bubble ol { margin: .2em 0 .5em; padding-left: 1.3em; }
+.bubble code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95em; background: var(--ice); padding: 0 4px; border-radius: 5px; }
+.bubble img.shot { display: block; max-width: min(260px, 100%); border-radius: 10px; margin-top: 6px; }
+.speak { border: none; background: none; padding: 2px 4px; font-size: .8rem; color: var(--ink-soft); font-weight: 400; text-decoration: underline; }
+.thinking { color: var(--ink-soft); font-style: italic; }
+.composer { border-top: 2px dashed var(--line); padding: 12px 16px 14px; display: grid; gap: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips button { border-width: 1.5px; font-weight: 400; }
+.attach { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: .9em; color: var(--ink-soft); }
+.attach img { height: 52px; border-radius: 8px; border: 1.5px solid var(--line); }
+.send { display: flex; gap: 8px; align-items: flex-end; }
+.send textarea { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--sky); border: 2px solid var(--line); border-radius: 14px; padding: 9px 12px; resize: none; min-height: 48px; }
+.photo-btn { position: relative; overflow: hidden; }
+.photo-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.offline { background: var(--kid-bubble); border-radius: 12px; padding: 10px 12px; font-size: .9em; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } button:hover:not(:disabled) { transform: none; } }
+</style>
+
+<div class="app">
+  <aside class="notebook" aria-label="Piper's notebook">
+    <div class="hello">
+      <img id="avatarBig" alt="Piper the penguin waving, wearing a red scarf with a pi symbol">
+      <div>
+        <h1>Hi, I'm Piper!</h1>
+        <p>Your math buddy for grades 6 to 8. I'm bad at flying, good at fractions.</p>
+      </div>
+    </div>
+    <details class="nb" id="nbDetails" open>
+      <summary>Piper's Notebook</summary>
+      <div class="fields">
+        <label for="f-nickname">Nickname<input id="f-nickname" maxlength="30" placeholder="First name or nickname only"></label>
+        <label for="f-grade">Grade or class<input id="f-grade" maxlength="40" placeholder="e.g. 7th grade, Math 7"></label>
+        <label for="f-helps">What helps me learn<textarea id="f-helps" placeholder="e.g. pictures first, one step at a time, calculator OK, no timers"></textarea></label>
+        <label for="f-interests">Things I like<textarea id="f-interests" placeholder="e.g. soccer, Minecraft, baking"></textarea></label>
+        <label for="f-mastered">Got it!<textarea id="f-mastered"></textarea></label>
+        <label for="f-working">Working on<textarea id="f-working"></textarea></label>
+        <label for="f-tricky">Tricky spots<textarea id="f-tricky"></textarea></label>
+        <label for="f-next">Next time start with<textarea id="f-next"></textarea></label>
+      </div>
+    </details>
+    <div class="row">
+      <button id="saveNb" class="primary" type="button">Save notebook</button>
+      <button id="updateNb" type="button">Update from today</button>
+    </div>
+    <div class="status" id="nbStatus" role="status"></div>
+    <p class="privacy">Piper only needs a nickname. Please leave out last names, school names and medical details. A grown-up can fill in "What helps me learn."</p>
+  </aside>
+
+  <main class="chat">
+    <div class="chat-top">
+      <span class="title">Math time with Piper</span>
+      <div class="row">
+        <button id="bigText" type="button" aria-pressed="false">Bigger text</button>
+        <button id="newProblem" type="button">New problem</button>
+      </div>
+    </div>
+    <div class="log" id="log" aria-live="polite"></div>
+    <div class="composer">
+      <div class="offline" id="offline" hidden>Piper can't reach Claude from here. Open this page on claude.ai while signed in, then allow it to use Claude when asked.</div>
+      <div class="chips" id="chips">
+        <button type="button" data-say="I'm stuck. Can you give me a small hint?">I'm stuck</button>
+        <button type="button" data-say="Can you show me with a picture or a number line?">Show me a picture</button>
+        <button type="button" data-say="Can you check my answer?">Check my answer</button>
+        <button type="button" data-say="Can I have a practice problem like this one?">Practice one</button>
+        <button type="button" data-say="I'm frustrated and need a short break.">I need a break</button>
+      </div>
+      <div class="attach" id="attachRow" hidden>
+        <img id="attachPreview" alt="Your photo, ready to send">
+        <span id="attachName"></span>
+        <button type="button" id="removePhoto">Remove photo</button>
+      </div>
+      <form class="send" id="sendForm">
+        <label class="photo-btn" id="photoLabel"><button type="button" tabindex="-1">📷 Photo</button><input type="file" id="photo" accept="image/*" aria-label="Add a photo of the problem or your work"></label>
+        <textarea id="box" rows="2" placeholder="Type your question or your answer..." aria-label="Message to Piper"></textarea>
+        <button class="primary" id="sendBtn" type="submit">Send</button>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script>
+const AVATAR = "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><circle cx="120" cy="120" r="116" fill="#D9F0FB"/><circle cx="58" cy="52" r="3" fill="#fff"/><circle cx="186" cy="40" r="2.5" fill="#fff"/><ellipse cx="120" cy="210" rx="78" ry="14" fill="#fff"/><ellipse cx="120" cy="214" rx="78" ry="10" fill="#B8E2F4"/><ellipse cx="98" cy="204" rx="17" ry="8" fill="#F7A531"/><ellipse cx="142" cy="204" rx="17" ry="8" fill="#F7A531"/><path d="M62 128 C44 146 46 172 60 182 C66 166 70 150 72 134 Z" fill="#23334A"/><path d="M170 120 C192 102 204 82 200 66 C186 72 172 92 164 116 Z" fill="#23334A"/><ellipse cx="120" cy="140" rx="58" ry="66" fill="#23334A"/><ellipse cx="120" cy="152" rx="40" ry="50" fill="#FFFDF7"/><ellipse cx="120" cy="96" rx="40" ry="32" fill="#FFFDF7"/><path d="M74 98 C74 52 166 52 166 98 C152 78 140 74 120 86 C100 74 88 78 74 98 Z" fill="#23334A"/><path d="M115 68 C110 50 122 46 126 55 C123 57 120 60 121 68 Z" fill="#23334A"/><ellipse cx="104" cy="96" rx="8" ry="10" fill="#1A1A1A"/><ellipse cx="136" cy="96" rx="8" ry="10" fill="#1A1A1A"/><circle cx="107" cy="92" r="3" fill="#fff"/><circle cx="139" cy="92" r="3" fill="#fff"/><ellipse cx="92" cy="112" rx="7" ry="4.5" fill="#F8A5B5"/><ellipse cx="148" cy="112" rx="7" ry="4.5" fill="#F8A5B5"/><path d="M110 108 L130 108 L120 118 Z" fill="#F7A531"/><path d="M112 112 Q120 122 128 112" fill="#E2602C"/><path d="M78 124 C96 136 144 136 162 124 L164 138 C144 150 96 150 76 138 Z" fill="#E94B3C"/><path d="M90 130 L96 144 M108 134 L110 148 M128 134 L126 148 M146 130 L142 144" stroke="#FFD34E" stroke-width="5"/><path d="M136 140 L150 186 L170 180 L154 136 Z" fill="#E94B3C"/><path d="M141 156 L159 150 M144 168 L162 162" stroke="#FFD34E" stroke-width="5"/><text x="154" y="182" font-family="Georgia,serif" font-size="15" font-weight="bold" fill="#fff" text-anchor="middle" transform="rotate(-18 154 178)">π</text></svg>`);
+document.getElementById("avatarBig").src = AVATAR;
+
+const RULES = `You are Piper, a small, round, slightly clumsy penguin who tutors middle school math (grades 6 to 8, US Common Core). You wear a striped scarf with a pi symbol. You are warm, patient and a little goofy, never sarcastic. Jokes are rare, short, gentle and at your own expense (fish, sliding, being bad at flying); no jokes when the learner is frustrated.
+
+HOW YOU TEACH
+- Understand before solving: restate the problem in kid words and confirm it before any computing.
+- The learner does the thinking. Ask, hint and model. Never just do homework. If truly stuck after hints, work a PARALLEL problem with different numbers, then hand the original back.
+- ONE question per message. Keep messages under about 90 words. Short sentences. Plain words. Define any math word the first time.
+- If there is no photo yet for a new problem, ask for a photo of the problem and of their attempt ("mistakes are my favorite snack"), or let them type it.
+- When a photo arrives, first echo back exactly what you read (numbers, signs, fraction bars, exponents) and ask if you read it right. If part is blurry, say which part.
+- If their work is shown, praise the correct steps specifically, then go to the FIRST wrong step. Name the misconception gently ("you added the bottoms; let's see why that doesn't work").
+- Follow Polya: understand, plan (ask what their first move is), carry out step by step, look back (estimate, does it make sense?, explain the key step in one sentence).
+- Hint ladder, go down one rung only when needed: 1) "what do you notice?" 2) focused question on the key idea 3) a visual/concrete model (number line, tape diagram, area model, ratio table, money, pizza) drawn with simple text 4) a partly worked step with a blank 5) a full parallel worked example.
+- Use concrete -> picture -> symbols when something is not landing. Use number lines for fractions and integers. Avoid broken shortcuts ("keep change flip" without meaning, "multiplying makes bigger", keyword tricks).
+- After a success, offer one similar "your turn" problem; if they nail it fast, offer a stretch problem.
+- Praise strategy and effort that worked, never "smart". Never say easy, obviously, just, simply.
+- Follow a teacher's required method if the learner mentions one.
+
+ADAPT ON THE NEXT MESSAGE
+- Wrong twice on the same step: drop one hint rung and switch representation.
+- Fast and correct: fewer scaffolds, bigger steps.
+- "idk", "?", one word: shrink to a yes/no or a choice of two; check vocabulary.
+- Frustration ("I'm dumb", "I hate math", caps, wants a break): pause the math, validate, normalize struggle, offer a 1-minute break or an easy warm-up win, then resume smaller.
+- Asks for just the answer: explain kindly that you help them get it, then give the smallest hint that creates momentum. If they already have a final answer, confirm or flag it honestly.
+- Apply the notebook's "What helps me learn" from the first message without naming any condition. For reading difficulty: shorter chunks, define words. For attention: show progress ("step 2 of 4"). For autism: literal language, say the plan, no idioms. For anxiety: no time words, warm-up win. For English learners: simple consistent words, offer key terms in their language.
+
+SAFETY
+- Only ever use a nickname. Never ask for last name, school, address, birthday, age, photos of faces or contact info. If a photo shows a full name or school, do not repeat it.
+- If the learner says they are hurt, unsafe or very upset, stop the math, respond with care, and encourage them to tell a trusted adult right away (parent, teacher, school counselor). In the US they can call or text 988.
+- No help on a test or quiz happening right now; offer practice afterward.
+- Stay on math. Gently steer back otherwise.
+
+FORMAT
+- Plain text with short paragraphs. You may use **bold**, simple "- " bullets and numbered steps. No tables, no LaTeX: write 3/4, x^2, sqrt(9). Put each math step on its own line.
+- At most one emoji per message (like a penguin, fish or snowflake), often none.`;
+
+const $ = (id) => document.getElementById(id);
+const FIELDS = ["nickname", "grade", "helps", "interests", "mastered", "working", "tricky", "next"];
+const log = $("log"), box = $("box"), sendBtn = $("sendBtn");
+let turns = [];             // the page keeps the chat; Claude keeps nothing between calls
+let photo = null;           // current problem photo (Blob), re-sent while working this problem
+let photoUrl = null;
+let sample = null, imgLimits = null, db = null, userId = null, busy = false;
+
+function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+function readNb() { const o = {}; FIELDS.forEach(f => o[f] = $("f-" + f).value.trim()); return o; }
+function fillNb(o) { if (!o) return; FIELDS.forEach(f => { if (typeof o[f] === "string") $("f-" + f).value = o[f]; }); }
+function nbText() {
+  const n = readNb();
+  const lines = [["Nickname", n.nickname], ["Grade/class", n.grade], ["What helps me learn", n.helps], ["Things I like", n.interests], ["Got it!", n.mastered], ["Working on", n.working], ["Tricky spots", n.tricky], ["Next time start with", n.next]]
+    .filter(([, v]) => v).map(([k, v]) => k + ": " + v);
+  return lines.length ? lines.join("\n") : "(empty: this is a new learner. Early on, ask what to call them and what grade or class they are in, one question at a time.)";
+}
+
+// Tiny, safe renderer: escape first, then bold, inline code, bullets, numbered lines, paragraphs.
+function esc(s) { return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function inline(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>"); }
+function render(md) {
+  const out = []; let list = null;
+  const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  md.split(/\n/).forEach(raw => {
+    const line = raw.trimEnd();
+    let m;
+    if ((m = line.match(/^\s*[-*•]\s+(.*)/))) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push("<li>" + inline(m[1]) + "</li>"); }
+    else if ((m = line.match(/^\s*(\d+)[.)]\s+(.*)/))) { if (list !== "ol") { close(); out.push(`<ol start="${m[1]}">`); list = "ol"; } out.push("<li>" + inline(m[2]) + "</li>"); }
+    else if (!line.trim()) { close(); }
+    else { close(); out.push("<p>" + inline(line.replace(/^#+\s*/, "")) + "</p>"); }
+  });
+  close();
+  return out.join("");
+}
+
+function addMsg(who, text, imgUrl) {
+  const wrap = document.createElement("div");
+  wrap.className = "msg " + who;
+  const av = document.createElement("img");
+  av.className = "av"; av.alt = "";
+  if (who === "piper") { av.src = AVATAR; wrap.append(av); }
+  const b = document.createElement("div");
+  b.className = "bubble";
+  if (who === "piper") b.innerHTML = render(text); else b.textContent = text;
+  if (imgUrl) { const i = document.createElement("img"); i.className = "shot"; i.src = imgUrl; i.alt = "Photo sent to Piper"; b.append(i); }
+  wrap.append(b);
+  if (who === "piper" && "speechSynthesis" in window) {
+    const sp = document.createElement("button");
+    sp.type = "button"; sp.className = "speak"; sp.textContent = "Read aloud";
+    sp.onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(b.innerText); u.rate = .92; speechSynthesis.speak(u); } catch (e) {} };
+    wrap.append(sp);
+  }
+  log.append(wrap);
+  log.scrollTop = log.scrollHeight;
+  return b;
+}
+
+function greet() {
+  const n = readNb();
+  const hi = n.nickname
+    ? `Hi ${n.nickname}! 🐧 Good to see you again.` + (n.next ? `\n\nLast time I wrote down: start with **${n.next}**. Want to do that, or is there new homework?` : `\n\nWhat are we working on today?`)
+    : `Hi! I'm Piper, a penguin who is bad at flying but pretty good at fractions. 🐧\n\nWhat should I call you? A first name or nickname is perfect.`;
+  addMsg("piper", hi + `\n\nTip: tap **📷 Photo** to send me a picture of the problem, and your work too. Mistakes are my favorite snack.`);
+  turns.push({ role: "assistant", content: hi });
+}
+
+const ERR = {
+  not_granted: "Piper needs permission to use Claude. Reload the page and choose Allow when asked.",
+  rate_limited: "Piper needs a short rest. Wait a minute, then send again.",
+  image_rejected: "Piper couldn't open that photo. Try a JPG or PNG, or take it again.",
+  images_unavailable: "Photos can't be sent from this view. Type the problem instead.",
+  prompt_too_large: "This chat got very long. Tap New problem to start fresh.",
+  refused: "Let's stick to math. What problem are you working on?",
+};
+function errText(e) { return ERR[e && e.code] || "Something went wrong reaching Claude. Try sending again."; }
+
+async function ask(userText) {
+  if (busy) return;
+  if (!sample) { $("offline").hidden = false; return; }
+  busy = true; sendBtn.disabled = true;
+  const sentPhoto = photo, sentUrl = photoUrl && turns.every(t => !t._img || t._img !== photoUrl) ? photoUrl : null;
+  addMsg("kid", userText, sentUrl);
+  turns.push({ role: "user", content: userText + (sentUrl ? "\n[I attached a photo.]" : ""), _img: sentUrl || undefined });
+  const bubble = addMsg("piper", "");
+  bubble.innerHTML = '<p class="thinking">Piper is thinking... 🐟</p>';
+  const recent = turns.slice(-24).map(({ role, content }) => ({ role, content }));
+  const header = { role: "user", content: RULES + "\n\nPIPER'S NOTEBOOK (what you remember about this learner):\n" + nbText() + "\n\n" + (sentPhoto ? "A photo of the current problem is attached." : "No photo attached right now.") + "\n\nThe conversation follows. Reply as Piper to the last message." };
+  try {
+    const opts = { cache: false, onText: ({ text }) => { bubble.innerHTML = render(text); log.scrollTop = log.scrollHeight; } };
+    if (sentPhoto && imgLimits) opts.images = [sentPhoto];
+    const { text } = await sample([header, ...recent], opts);
+    bubble.innerHTML = render(text);
+    turns.push({ role: "assistant", content: text });
+  } catch (e) {
+    bubble.innerHTML = render((e && e.text ? e.text + "\n\n" : "") + errText(e));
+  } finally {
+    busy = false; sendBtn.disabled = false; box.focus();
+  }
+}
+
+$("sendForm").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const t = box.value.trim();
+  if (!t && !photo) return;
+  box.value = "";
+  ask(t || "Here is my photo.");
+});
+box.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); $("sendForm").requestSubmit(); } });
+$("chips").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-say]"); if (b) ask(b.dataset.say); });
+
+$("photo").addEventListener("change", () => {
+  const f = $("photo").files[0];
+  if (!f) return;
+  if (imgLimits && f.size > imgLimits.maxInputBytes) { $("attachName").textContent = "That photo is too big. Try a smaller one."; $("attachRow").hidden = false; return; }
+  photo = f; if (photoUrl) URL.revokeObjectURL(photoUrl); photoUrl = URL.createObjectURL(f);
+  $("attachPreview").src = photoUrl; $("attachName").textContent = "Photo ready. Piper will keep it for this problem.";
+  $("attachRow").hidden = false;
+  $("photo").value = "";
+});
+function clearPhoto() { photo = null; if (photoUrl) URL.revokeObjectURL(photoUrl); photoUrl = null; $("attachRow").hidden = true; }
+$("removePhoto").onclick = clearPhoto;
+$("newProblem").onclick = () => {
+  clearPhoto();
+  const keep = turns.slice(-4);
+  turns = keep;
+  addMsg("piper", "Fresh ice, new problem! ❄️ Send a photo or type it out.");
+  turns.push({ role: "assistant", content: "Fresh ice, new problem! Send a photo or type it out." });
+};
+$("bigText").onclick = () => {
+  const on = document.body.classList.toggle("big");
+  $("bigText").setAttribute("aria-pressed", String(on));
+  store("piper-big", on ? "1" : "0");
+};
+
+// Notebook memory: private per signed-in person in the artifact's database, with this browser as a backup.
+const nbDoc = () => db && userId ? db.doc("data/users/" + userId + "/notebook") : null;
+async function saveNb(msg) {
+  const data = { ...readNb(), updated: new Date().toISOString().slice(0, 10) };
+  store("piper-notebook", JSON.stringify(data));
+  const st = $("nbStatus");
+  try {
+    const d = nbDoc();
+    if (!d) throw new Error("no db");
+    await d.set(data);
+    st.textContent = msg || "Saved. Piper will remember next time."; st.className = "status ok";
+  } catch (e) {
+    st.textContent = "Saved in this browser only. Sign in on claude.ai to keep it everywhere."; st.className = "status";
+  }
+}
+$("saveNb").onclick = () => saveNb();
+$("updateNb").onclick = async () => {
+  const st = $("nbStatus");
+  if (!sample) { $("offline").hidden = false; return; }
+  if (turns.filter(t => t.role === "user").length < 2) { st.textContent = "Chat with Piper a bit first, then update."; st.className = "status"; return; }
+  st.textContent = "Piper is writing in the notebook..."; st.className = "status";
+  const chat = turns.slice(-30).map(t => (t.role === "user" ? "Learner: " : "Piper: ") + t.content).join("\n");
+  try {
+    const out = await sample.json(`You maintain a short learner profile for a middle school math tutor named Piper. Update it from today's session.
+Rules: keep it short (each field under 160 characters). Never include last names, school names, diagnoses or medical details; write only what helps ("likes number lines"). Move a topic to "mastered" only if the learner solved two varied problems without hints. Make "tricky" specific misconceptions. Keep "helps" from the current profile unless the session clearly shows something new that helped. Keep "nickname" and "grade" unless the learner gave new ones.
+
+CURRENT PROFILE:
+${JSON.stringify(readNb())}
+
+TODAY'S SESSION:
+${chat}
+
+Reply with only a JSON object with these string keys: nickname, grade, helps, interests, mastered, working, tricky, next.`, { modelTier: "quick", cache: false });
+    if (out && typeof out === "object") { fillNb(out); await saveNb("Notebook updated from today and saved."); }
+  } catch (e) { st.textContent = errText(e); st.className = "status"; }
+};
+
+// Boot: render from the browser copy right away, then light up Claude and the database.
+try { const local = JSON.parse(load("piper-notebook") || "null"); fillNb(local); } catch (e) {}
+if (load("piper-big") === "1") { document.body.classList.add("big"); $("bigText").setAttribute("aria-pressed", "true"); }
+if (window.matchMedia("(max-width: 860px)").matches && readNb().nickname) $("nbDetails").open = false;
+greet();
+
+(async () => {
+  if (!window.claude || !window.claude.use) { $("offline").hidden = false; return; }
+  const [s, d, u] = await Promise.all([claude.use("sample"), claude.use("db"), claude.use("user")]);
+  sample = s;
+  if (!sample) $("offline").hidden = false;
+  else {
+    const lim = await sample.limits().catch(() => null);
+    imgLimits = lim && lim.images ? lim.images : null;
+    if (imgLimits) $("photo").accept = imgLimits.mediaTypes.join(",");
+    else $("photoLabel").hidden = true;
+  }
+  db = d;
+  userId = u ? await u.id().catch(() => null) : null;
+  const doc = nbDoc();
+  if (doc) {
+    try {
+      const snap = await doc.get();
+      if (snap.exists) {
+        const hadName = !!readNb().nickname;
+        fillNb(snap.data());
+        if (!hadName && readNb().nickname) { log.innerHTML = ""; turns = []; greet(); }
+      }
+    } catch (e) {}
+  }
+})();
+</script>
