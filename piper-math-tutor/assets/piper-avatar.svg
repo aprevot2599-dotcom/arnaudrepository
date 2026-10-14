@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-labelledby="t d">
+  <title id="t">Piper the Math Penguin</title>
+  <desc id="d">A round, smiling penguin with rosy cheeks, one wing waving, wearing a red and yellow striped scarf with a pi symbol, standing on a small ice floe.</desc>
+  <!-- background -->
+  <circle cx="120" cy="120" r="116" fill="#D9F0FB"/>
+  <circle cx="58" cy="52" r="3" fill="#fff"/><circle cx="186" cy="40" r="2.5" fill="#fff"/><circle cx="200" cy="96" r="2" fill="#fff"/><circle cx="40" cy="110" r="2" fill="#fff"/>
+  <!-- ice floe -->
+  <ellipse cx="120" cy="210" rx="78" ry="14" fill="#fff"/>
+  <ellipse cx="120" cy="214" rx="78" ry="10" fill="#B8E2F4"/>
+  <!-- feet -->
+  <ellipse cx="98" cy="204" rx="17" ry="8" fill="#F7A531"/>
+  <ellipse cx="142" cy="204" rx="17" ry="8" fill="#F7A531"/>
+  <!-- left wing (resting) -->
+  <path d="M62 128 C44 146 46 172 60 182 C66 166 70 150 72 134 Z" fill="#23334A"/>
+  <!-- right wing (waving) -->
+  <path d="M170 120 C192 102 204 82 200 66 C186 72 172 92 164 116 Z" fill="#23334A"/>
+  <!-- body -->
+  <ellipse cx="120" cy="140" rx="58" ry="66" fill="#23334A"/>
+  <!-- belly -->
+  <ellipse cx="120" cy="152" rx="40" ry="50" fill="#FFFDF7"/>
+  <!-- face patch -->
+  <ellipse cx="120" cy="96" rx="40" ry="32" fill="#FFFDF7"/>
+  <!-- head cap -->
+  <path d="M74 98 C74 52 166 52 166 98 C152 78 140 74 120 86 C100 74 88 78 74 98 Z" fill="#23334A"/>
+  <!-- tuft -->
+  <path d="M115 68 C110 50 122 46 126 55 C123 57 120 60 121 68 Z" fill="#23334A"/>
+  <!-- eyes -->
+  <ellipse cx="104" cy="96" rx="8" ry="10" fill="#1A1A1A"/>
+  <ellipse cx="136" cy="96" rx="8" ry="10" fill="#1A1A1A"/>
+  <circle cx="107" cy="92" r="3" fill="#fff"/><circle cx="139" cy="92" r="3" fill="#fff"/>
+  <!-- cheeks -->
+  <ellipse cx="92" cy="112" rx="7" ry="4.5" fill="#F8A5B5" opacity=".85"/>
+  <ellipse cx="148" cy="112" rx="7" ry="4.5" fill="#F8A5B5" opacity=".85"/>
+  <!-- beak, open in a happy grin -->
+  <path d="M110 108 L130 108 L120 118 Z" fill="#F7A531"/>
+  <path d="M112 112 Q120 122 128 112" fill="#E2602C"/>
+  <!-- scarf -->
+  <path d="M78 124 C96 136 144 136 162 124 L164 138 C144 150 96 150 76 138 Z" fill="#E94B3C"/>
+  <path d="M90 130 L96 144 M108 134 L110 148 M128 134 L126 148 M146 130 L142 144" stroke="#FFD34E" stroke-width="5"/>
+  <!-- scarf tail with pi -->
+  <path d="M136 140 L150 186 L170 180 L154 136 Z" fill="#E94B3C"/>
+  <path d="M141 156 L159 150 M144 168 L162 162" stroke="#FFD34E" stroke-width="5"/>
+  <text x="154" y="182" font-family="Georgia, 'Times New Roman', serif" font-size="15" font-weight="bold" fill="#fff" text-anchor="middle" transform="rotate(-18 154 178)">π</text>
+</svg>
