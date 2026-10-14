@@ -80,6 +80,9 @@ details.nb:not([open]) > summary::after { content: "▸"; }
 .wiz-list li { display: grid; gap: 6px; background: var(--paper); border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: .88em; }
 .wiz-list li.chosen { border-color: var(--ok); }
 .wiz-list .tag { font-size: .8em; color: var(--ok); font-weight: 700; }
+.errinfo { margin-top: 8px; font-size: .85em; color: var(--ink-soft); }
+.errinfo summary { cursor: pointer; }
+.errinfo p { margin: 6px 0 0; }
 .hint.warn { color: var(--ink); background: var(--kid-bubble); border-radius: 8px; padding: 6px 8px; }
 
 /* Buttons */
@@ -332,6 +335,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
       <div class="attach" id="attachRow" hidden>
         <img id="attachPreview" alt="Your photo, ready to send">
         <span id="attachName"></span>
+        <button type="button" id="resendBtn">Show Piper again</button>
         <button type="button" id="removePhoto">Remove photo</button>
       </div>
       <div class="tip" id="talkTip" hidden>To talk to Piper, tap the 🎤 on your keyboard and speak, then press Send. On a computer: Windows key + H on Windows, or press the Fn (Globe) key twice on a Mac. Turn on 🔊 Piper talks to hear her answers.</div>
@@ -427,7 +431,7 @@ HOW YOU TEACH
 - The learner does the thinking. Ask, hint and model. Never just do homework. If truly stuck after hints, work a PARALLEL problem with different numbers, then hand the original back.
 - ONE question per message. Keep messages under about 90 words. Short sentences. Plain words. Define any math word the first time.
 - If there is no photo yet for a new problem, ask for a photo of the problem and of their attempt (they can use the Photo button or the Phone photo QR code), or let them type it.
-- When a photo arrives, first echo back exactly what you read (numbers, signs, fraction bars, exponents) and ask if you read it right. If part is blurry, say which part.
+- When a photo arrives, first write out the whole problem exactly as you read it (numbers, signs, fraction bars, exponents), plus a short note of the learner's work if shown, and ask if you read it right. If part is blurry, say which part. You only see the photo once, so this written copy is what you work from afterwards.
 - If their work is shown, praise the correct steps specifically, then go to the FIRST wrong step. Name the misconception gently.
 - Follow Polya: understand, plan (ask what their first move is), carry out step by step, look back (estimate, does it make sense?, explain the key step in one sentence).
 - Hint ladder, go down one rung only when needed: 1) "what do you notice?" 2) focused question on the key idea 3) a visual or concrete model (number line, tape diagram, area model, ratio table, money, pizza) drawn with simple text 4) a partly worked step with a blank 5) a full parallel worked example.
@@ -623,29 +627,60 @@ function greet() {
 
 const ERR = {
   not_granted: "Piper needs permission to use Claude. Reload the page and choose Allow when asked.",
-  rate_limited: "Piper needs a short pause. Wait a minute, then send again.",
+  rate_limited: "Piper needs a short pause. The Send button will come back in a minute.",
   image_rejected: "Piper couldn't open that photo. Try a JPG or PNG, or take it again.",
   images_unavailable: "Photos can't be sent from this view. Type the problem instead.",
   prompt_too_large: "This chat got very long. Tap New problem to start fresh.",
   refused: "Let's stick to math. What problem are you working on?",
 };
 function errText(e) { return ERR[e && e.code] || "Something went wrong reaching Claude. Try sending again."; }
+function addRetry(bubble, e) {
+  const row = document.createElement("div"); row.className = "choices";
+  const b = document.createElement("button"); b.type = "button"; b.textContent = "Try again";
+  b.onclick = () => { if (Date.now() < coolUntil) return; b.disabled = true; bubble.closest(".msg").remove(); if (lastAsk) ask(lastAsk.text, true); };
+  row.append(b); bubble.append(row);
+  const d = document.createElement("details"); d.className = "errinfo";
+  const sm = document.createElement("summary"); sm.textContent = "Details for grown-ups"; d.append(sm);
+  const p = document.createElement("p");
+  p.textContent = e.code === "rate_limited"
+    ? "Claude said this account is sending too much right now. Usual causes: the account reached its claude.ai usage limit (check claude.ai Settings, Usage), Piper is open in more than one tab or device, or many messages were sent very quickly. Close other Piper tabs and wait a minute; if it keeps happening, the usage limit is the likely cause and it resets on its own."
+    : "Error code: " + (e.code || "unknown") + ". " + (e.message || "");
+  d.append(p); bubble.append(d);
+}
+function coolDown(sec) {
+  coolUntil = Date.now() + sec * 1000;
+  const tick = () => {
+    const left = Math.ceil((coolUntil - Date.now()) / 1000);
+    if (left <= 0) { sendBtn.disabled = busy; sendBtn.textContent = "Send"; document.querySelectorAll("#chips button").forEach(b => b.disabled = false); return; }
+    sendBtn.disabled = true; sendBtn.textContent = "Wait " + left + "s";
+    document.querySelectorAll("#chips button").forEach(b => b.disabled = true);
+    setTimeout(tick, 1000);
+  };
+  tick();
+}
 const FEELING_WORDS = /\b(hate|dumb|stupid|can'?t|cannot|idk|ugh|give up|frustrat\w*|confus\w*|hard|break|sad|worried|scared|nervous|anxious|cry|tired|annoyed|boring)\b/i;
 
-async function ask(userText) {
-  if (busy) return;
+let resendPhoto = false, coolUntil = 0, lastAsk = null;
+async function ask(userText, retry) {
+  if (busy || Date.now() < coolUntil) return;
   if (!sample) { $("offline").hidden = false; return; }
   busy = true; sendBtn.disabled = true;
-  const sentPhoto = photo, sentUrl = photoUrl && turns.every(t => t._img !== photoUrl) ? photoUrl : null;
-  addMsg("kid", userText, sentUrl);
-  turns.push({ role: "user", content: userText + (sentUrl ? "\n[I attached a photo.]" : ""), _img: sentUrl || undefined });
+  // The photo goes to Claude once (or when the learner taps "Show Piper again"); after that Piper works from her written copy.
+  const sentUrl = !retry && photoUrl && turns.every(t => t._img !== photoUrl) ? photoUrl : null;
+  const sentPhoto = (sentUrl || resendPhoto || (retry && lastAsk && lastAsk.photo)) ? photo : null;
+  resendPhoto = false;
+  lastAsk = { text: userText, photo: !!sentPhoto };
+  if (!retry) {
+    addMsg("kid", userText, sentUrl);
+    turns.push({ role: "user", content: userText + (sentUrl ? "\n[I attached a photo.]" : ""), _img: sentUrl || undefined });
+  }
   const upset = FEELING_WORDS.test(userText);
   setMood(upset ? "empathy" : "thinking");
   if (upset) sfx("soft");
   const bubble = addMsg("piper", "");
   bubble.innerHTML = '<p class="thinking">Piper is thinking...</p>';
-  const recent = turns.slice(-24).map(({ role, content }) => ({ role, content }));
-  const header = { role: "user", content: RULES + "\n\nMODE: " + (intake ? "GET TO KNOW YOU" : "TUTORING") + "\n\nPIPER'S NOTEBOOK (what you remember about this learner):\n" + nbText() + "\n\n" + (sentPhoto ? "A photo of the current problem is attached." : "No photo attached right now.") + "\n\nThe conversation follows. Reply as Piper to the last message." };
+  const recent = turns.slice(-16).map(({ role, content }) => ({ role, content }));
+  const header = { role: "user", content: RULES + "\n\nMODE: " + (intake ? "GET TO KNOW YOU" : "TUTORING") + "\n\nPIPER'S NOTEBOOK (what you remember about this learner):\n" + nbText() + "\n\n" + (sentPhoto ? "A photo of the current problem is attached." : photo ? "The learner's photo was sent earlier in the conversation; work from what you wrote down from it. If you truly need to see it again, ask them to tap Show Piper again." : "No photo attached right now.") + "\n\nThe conversation follows. Reply as Piper to the last message." };
   try {
     const opts = { cache: false, onText: ({ text }) => {
       const r = showPiper(bubble, text, false);
@@ -665,9 +700,11 @@ async function ask(userText) {
     if (r.done && intake) { intake = false; updateNotebook(true); }
   } catch (e) {
     bubble.innerHTML = render((e && e.text ? parseReply(e.text).text + "\n\n" : "") + errText(e));
+    if (e && e.code !== "cancelled" && e.code !== "refused") addRetry(bubble, e);
+    if (e && e.code === "rate_limited") coolDown(60);
     setMood("empathy", 3000);
   } finally {
-    busy = false; sendBtn.disabled = false;
+    busy = false; sendBtn.disabled = Date.now() < coolUntil;
     if (!speakingNow) setTalking(false);
   }
 }
@@ -702,6 +739,7 @@ $("photo").addEventListener("change", () => {
 });
 function clearPhoto() { photo = null; if (photoUrl) URL.revokeObjectURL(photoUrl); photoUrl = null; $("attachRow").hidden = true; }
 $("removePhoto").onclick = clearPhoto;
+$("resendBtn").onclick = () => { if (!photo) return; resendPhoto = true; ask("Can you look at my photo again?"); };
 $("newProblem").onclick = () => {
   clearPhoto();
   turns = turns.slice(-4);

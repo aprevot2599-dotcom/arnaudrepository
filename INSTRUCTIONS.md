@@ -120,6 +120,7 @@ Piper reacts with empathy the moment a frustrated message is sent, before her an
 | QR code missing | Use Copy link and open it on the phone |
 | "Saved in this browser only" | You are not signed in, or the page was opened outside claude.ai |
 | Piper rushes or gives long answers | Add "one step at a time, short messages" to What helps me learn |
+| "Piper needs a short pause" | The account hit its claude.ai usage limit, Piper is open in two tabs or devices, or messages went out very fast. Close other Piper tabs, wait for the Send button to come back, then tap Try again. Check claude.ai Settings, Usage; if the limit is reached it resets on its own. Open "Details for grown-ups" under the message for more. |
 | Chat feels slow | Normal for longer thinking; photos take longer than text |
 
 ## 12. Using Piper without the app
