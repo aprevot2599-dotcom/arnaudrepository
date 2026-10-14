@@ -1,19 +1,20 @@
-<title>Piper the Math Penguin</title>
+<title>Piper Math Tutor</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <style>
-/* Layout: an ice-floe chat. Piper's notebook sits beside the conversation on wide screens and folds above it on phones. */
+/* Layout: Piper lives on a stage at the top of the conversation; her notebook sits beside it on wide screens and below it on phones. */
 :root {
-  --sky: #E6F4FB;
-  --ice: #FFFFFF;
-  --floe: #CFE8F4;
+  --sky: #E9F4FA;
+  --paper: #FFFFFF;
+  --floe: #D3EAF5;
   --ink: #1F2D42;
   --ink-soft: #4C5D74;
-  --scarf: #D63F31;
+  --scarf: #C93A2D;
   --scarf-ink: #FFFFFF;
-  --sun: #F5B83A;
-  --kid-bubble: #FFF4D6;
+  --sun: #F2B33D;
+  --kid-bubble: #FFF2D2;
   --line: #B9D6E6;
   --ok: #2E7D4F;
   --font-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
@@ -23,18 +24,17 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --sky: #0F1A2A; --ice: #17263B; --floe: #1E3350; --ink: #EAF3FA; --ink-soft: #A9BDD2;
+    --sky: #0F1A2A; --paper: #17263B; --floe: #1E3350; --ink: #EAF3FA; --ink-soft: #A9BDD2;
     --scarf: #F06A5B; --scarf-ink: #1A0C0A; --sun: #F5C35A; --kid-bubble: #3A3220; --line: #2B4566; --ok: #6FD39A;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --sky: #0F1A2A; --ice: #17263B; --floe: #1E3350; --ink: #EAF3FA; --ink-soft: #A9BDD2;
+  --sky: #0F1A2A; --paper: #17263B; --floe: #1E3350; --ink: #EAF3FA; --ink-soft: #A9BDD2;
   --scarf: #F06A5B; --scarf-ink: #1A0C0A; --sun: #F5C35A; --kid-bubble: #3A3220; --line: #2B4566; --ok: #6FD39A;
   color-scheme: dark;
 }
 [hidden] { display: none !important; }
-html, body { height: 100%; }
 body {
   background: var(--sky); color: var(--ink);
   font-family: var(--font-body); font-size: var(--text-size); line-height: 1.55;
@@ -44,88 +44,305 @@ body {
 }
 body.big { --text-size: 21px; }
 body.big .bubble { letter-spacing: .02em; word-spacing: .12em; line-height: 1.75; }
-.app { max-width: 1120px; margin: 0 auto; display: grid; gap: 20px; grid-template-columns: 300px minmax(0, 1fr); align-items: start; }
+.app { max-width: 1160px; margin: 0 auto; display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) 300px; align-items: start; }
 .app > * { min-width: 0; }
-@media (max-width: 860px) { .app { grid-template-columns: minmax(0, 1fr); } .notebook { order: 2; } }
+@media (max-width: 880px) { .app { grid-template-columns: minmax(0, 1fr); } }
+
+/* Stage */
+.stage { display: flex; gap: 16px; align-items: center; padding: 14px 16px; border-bottom: 2px dashed var(--line); flex-wrap: wrap; }
+.stage-av { width: 150px; height: 150px; flex: none; }
+.stage-av svg { width: 100%; height: 100%; display: block; }
+.stage-info { flex: 1; min-width: 220px; display: grid; gap: 6px; }
+.stage-info h1 { font-family: var(--font-display); font-weight: 700; font-size: 1.9rem; line-height: 1; margin: 0; }
+.mood-line { margin: 0; color: var(--ink-soft); font-style: italic; min-height: 1.5em; }
+@media (max-width: 520px) { .stage-av { width: 104px; height: 104px; } .stage-info h1 { font-size: 1.5rem; } .stage-info { min-width: 0; } }
 
 /* Notebook */
-.notebook { background: var(--ice); border: 2px solid var(--line); border-radius: var(--radius); padding: 18px; display: grid; gap: 14px; position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)); }
-@media (max-width: 860px) { .notebook { position: static; } }
-.hello { display: flex; gap: 12px; align-items: center; }
-.hello img { width: 84px; height: 84px; flex: none; }
-.hello h1 { font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; line-height: 1.1; margin: 0; text-wrap: balance; }
-.hello p { margin: 4px 0 0; color: var(--ink-soft); font-size: .9em; }
-details.nb > summary { cursor: pointer; font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+.notebook { background: var(--paper); border: 2px solid var(--line); border-radius: var(--radius); padding: 18px; display: grid; gap: 14px; }
+.notebook h2, .voicebox h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.15rem; margin: 0; }
+details.nb > summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
 details.nb > summary::-webkit-details-marker { display: none; }
 details.nb > summary::after { content: "▾"; color: var(--ink-soft); }
 details.nb:not([open]) > summary::after { content: "▸"; }
 .fields { display: grid; gap: 10px; margin-top: 10px; }
-.fields label { display: grid; gap: 3px; font-size: .78em; font-weight: 700; color: var(--ink-soft); letter-spacing: .04em; text-transform: uppercase; }
-.fields input, .fields textarea { font: inherit; font-size: .95rem; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink); background: var(--sky); border: 1.5px solid var(--line); border-radius: 10px; padding: 7px 9px; width: 100%; box-sizing: border-box; }
+.fields label, .voicebox label { display: grid; gap: 3px; font-size: .78em; font-weight: 700; color: var(--ink-soft); letter-spacing: .04em; text-transform: uppercase; }
+.fields input, .fields textarea, .voicebox select { font: inherit; font-size: .95rem; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink); background: var(--sky); border: 1.5px solid var(--line); border-radius: 10px; padding: 7px 9px; width: 100%; box-sizing: border-box; }
 .fields textarea { resize: vertical; min-height: 54px; }
+.voicebox { display: grid; gap: 8px; border-top: 2px dashed var(--line); padding-top: 12px; }
+.voicebox input[type=range] { width: 100%; }
+.hint, .privacy { font-size: .8em; color: var(--ink-soft); margin: 0; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
-.status { font-size: .82em; color: var(--ink-soft); min-height: 1.2em; }
+.status { font-size: .85em; color: var(--ink-soft); min-height: 1.2em; }
 .status.ok { color: var(--ok); }
-.privacy { font-size: .78em; color: var(--ink-soft); margin: 0; }
 
 /* Buttons */
-button { font: inherit; cursor: pointer; border-radius: 999px; border: 2px solid var(--ink); background: var(--ice); color: var(--ink); padding: 6px 14px; font-size: .9rem; font-weight: 700; }
+button, .btnlike { font: inherit; cursor: pointer; border-radius: 999px; border: 2px solid var(--ink); background: var(--paper); color: var(--ink); padding: 6px 14px; font-size: .9rem; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
 button.primary { background: var(--scarf); border-color: var(--scarf); color: var(--scarf-ink); }
-button:hover:not(:disabled) { transform: translateY(-1px); }
+button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+button:hover:not(:disabled), .btnlike:hover { transform: translateY(-1px); }
 button:disabled { opacity: .5; cursor: not-allowed; }
-button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible, .btnlike:focus-within { outline: 3px solid var(--sun); outline-offset: 2px; }
 
 /* Chat */
-.chat { background: var(--ice); border: 2px solid var(--line); border-radius: var(--radius); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: min(760px, calc(100vh - 32px)); }
-.chat-top { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 2px dashed var(--line); }
-.chat-top .title { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; }
-.log { padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; max-height: 62vh; }
+.chat { background: var(--paper); border: 2px solid var(--line); border-radius: var(--radius); display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.log { padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-height: 220px; max-height: 52vh; }
 .msg { display: flex; gap: 10px; align-items: flex-end; max-width: 100%; }
 .msg.kid { flex-direction: row-reverse; }
 .msg img.av { width: 40px; height: 40px; flex: none; }
 .bubble { min-width: 0; max-width: 78ch; padding: 10px 14px; border-radius: 16px 16px 16px 4px; background: var(--floe); overflow-wrap: anywhere; }
 .msg.kid .bubble { border-radius: 16px 16px 4px 16px; background: var(--kid-bubble); }
+.msg.speaking .bubble { outline: 3px solid var(--sun); outline-offset: 2px; }
 .bubble p { margin: 0 0 .5em; } .bubble p:last-child { margin-bottom: 0; }
 .bubble ul, .bubble ol { margin: .2em 0 .5em; padding-left: 1.3em; }
-.bubble code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95em; background: var(--ice); padding: 0 4px; border-radius: 5px; }
+.bubble code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95em; background: var(--paper); padding: 0 4px; border-radius: 5px; }
 .bubble img.shot { display: block; max-width: min(260px, 100%); border-radius: 10px; margin-top: 6px; }
 .speak { border: none; background: none; padding: 2px 4px; font-size: .8rem; color: var(--ink-soft); font-weight: 400; text-decoration: underline; }
 .thinking { color: var(--ink-soft); font-style: italic; }
+.choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.choices button { border-width: 1.5px; font-weight: 400; }
 .composer { border-top: 2px dashed var(--line); padding: 12px 16px 14px; display: grid; gap: 10px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chips button { border-width: 1.5px; font-weight: 400; }
 .attach { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: .9em; color: var(--ink-soft); }
 .attach img { height: 52px; border-radius: 8px; border: 1.5px solid var(--line); }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; }
 .send { display: flex; gap: 8px; align-items: flex-end; }
 .send textarea { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--sky); border: 2px solid var(--line); border-radius: 14px; padding: 9px 12px; resize: none; min-height: 48px; }
-.photo-btn { position: relative; overflow: hidden; }
-.photo-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.offline { background: var(--kid-bubble); border-radius: 12px; padding: 10px 12px; font-size: .9em; }
-.choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.choices button { border-width: 1.5px; font-weight: 400; background: var(--ice); }
-.voicebox { display: grid; gap: 8px; border-top: 2px dashed var(--line); padding-top: 12px; }
-.voicebox h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; margin: 0; }
-.voicebox select, .voicebox input[type=range] { font: inherit; font-size: .9rem; color: var(--ink); width: 100%; box-sizing: border-box; }
-.voicebox select { background: var(--sky); border: 1.5px solid var(--line); border-radius: 10px; padding: 6px 8px; }
-.voicebox label { display: grid; gap: 3px; font-size: .78em; font-weight: 700; color: var(--ink-soft); letter-spacing: .04em; text-transform: uppercase; }
-.voicebox .hint { font-size: .8em; color: var(--ink-soft); margin: 0; }
-.talk-tip { font-size: .9em; background: var(--floe); border-radius: 12px; padding: 10px 12px; }
-.msg.speaking .bubble { outline: 3px solid var(--sun); outline-offset: 2px; }
-button[aria-pressed="true"] { background: var(--ink); color: var(--ice); }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } button:hover:not(:disabled) { transform: none; } }
+.btnlike { position: relative; overflow: hidden; }
+.btnlike input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.note { background: var(--kid-bubble); border-radius: 12px; padding: 10px 12px; font-size: .9em; }
+.tip { font-size: .9em; background: var(--floe); border-radius: 12px; padding: 10px 12px; }
+
+/* Panels: phone photo and instructions */
+.panel { background: var(--floe); border-radius: 14px; padding: 14px 16px; display: grid; gap: 10px; }
+.panel h3 { font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; margin: 0; }
+.panel ol { margin: 0; padding-left: 1.3em; display: grid; gap: 4px; }
+.qrwrap { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.qr { width: 170px; height: 170px; background: #fff; border-radius: 12px; padding: 8px; box-sizing: border-box; flex: none; display: grid; place-items: center; }
+.qr svg { width: 100%; height: 100%; }
+.linkbox { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .8em; background: var(--paper); border-radius: 8px; padding: 6px 8px; overflow-wrap: anywhere; user-select: all; }
+.help { margin: 14px 16px 0; }
+.help h4 { font-family: var(--font-display); font-weight: 600; margin: 6px 0 2px; font-size: 1rem; }
+.help p, .help li { font-size: .92em; }
+.help p { margin: 0; }
+.faces { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; font-size: .9em; margin: 0; padding: 0; list-style: none; }
+
+/* Phone view */
+.phone { max-width: 520px; margin: 0 auto; display: grid; gap: 16px; text-align: center; }
+.phone .stage-av { margin: 0 auto; width: 160px; height: 160px; }
+.phone h1 { font-family: var(--font-display); font-weight: 700; font-size: 1.7rem; margin: 0; text-wrap: balance; }
+.phone .card { background: var(--paper); border: 2px solid var(--line); border-radius: var(--radius); padding: 18px; display: grid; gap: 12px; }
+.phone .big-btns { display: grid; gap: 10px; }
+.phone .big-btns .btnlike, .phone .big-btns button { justify-content: center; font-size: 1.1rem; padding: 14px 18px; }
+.phone img.prev { max-width: 100%; border-radius: 12px; border: 2px solid var(--line); }
+.phone ol { text-align: left; margin: 0; padding-left: 1.3em; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } button:hover:not(:disabled), .btnlike:hover { transform: none; } }
 </style>
 
-<div class="app">
-  <aside class="notebook" aria-label="Piper's notebook">
-    <div class="hello">
-      <img id="avatarBig" alt="Piper the penguin waving, wearing a red scarf with a pi symbol">
-      <div>
-        <h1>Hi, I'm Piper!</h1>
-        <p>Your math buddy for grades 6 to 8. I'm bad at flying, good at fractions.</p>
+<div class="app" id="appView">
+  <main class="chat">
+    <div class="stage">
+      <div class="stage-av" id="stageAv"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" class="pv" data-mood="calm" role="img" aria-label="Piper, a smiling math teacher with curly hair in a bun, round glasses, gold earrings and a red striped scarf with a pi symbol">
+<style>
+.pv .m{display:none}
+.pv .m-smile{display:inline}
+.pv .x{opacity:0;transition:opacity .35s}
+.pv #tilt,.pv #browL,.pv #browR,.pv #look,.pv #eyes{transition:transform .35s ease}
+.pv #tilt{transform-box:view-box;transform-origin:100px 140px}
+.pv #head{transform-box:view-box;transform-origin:100px 140px;animation:pv-sway 7s ease-in-out infinite}
+.pv #body{animation:pv-breathe 4.5s ease-in-out infinite}
+.pv #browL,.pv #browR{transform-box:fill-box;transform-origin:center}
+.pv #eyes{transform-box:view-box;transform-origin:100px 92px}
+.pv.blink #eyes{transform:scaleY(.08);transition:transform .07s}
+.pv #wave{transform-box:view-box;transform-origin:158px 168px}
+@keyframes pv-sway{0%,100%{transform:rotate(-1.2deg)}50%{transform:rotate(1.2deg)}}
+@keyframes pv-breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(1.3px)}}
+@keyframes pv-bounce{0%,100%{transform:translateY(0)}30%{transform:translateY(-7px)}60%{transform:translateY(0)}80%{transform:translateY(-3px)}}
+@keyframes pv-wave{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(14deg)}}
+@keyframes pv-nod{0%,100%{transform:rotate(0)}25%{transform:rotate(3deg) translateY(2px)}50%{transform:rotate(0)}75%{transform:rotate(2deg) translateY(1px)}}
+@keyframes pv-dots{0%,100%{opacity:.25}50%{opacity:1}}
+@keyframes pv-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+.pv[data-mood=happy] .m-smile,.pv[data-mood=celebrate] .m-smile,.pv[data-mood=hello] .m-smile{display:none}
+.pv[data-mood=happy] .m-grin,.pv[data-mood=celebrate] .m-grin,.pv[data-mood=hello] .m-grin{display:inline}
+.pv[data-mood=happy] #browL,.pv[data-mood=happy] #browR{transform:translateY(-2px)}
+.pv[data-mood=celebrate] #rig{animation:pv-bounce .9s ease-in-out 3}
+.pv[data-mood=celebrate] #browL,.pv[data-mood=celebrate] #browR{transform:translateY(-4px)}
+.pv[data-mood=celebrate] #wave,.pv[data-mood=hello] #wave{opacity:1;animation:pv-wave .5s ease-in-out infinite}
+.pv[data-mood=celebrate] #sparkles{opacity:1}
+.pv[data-mood=encourage] #head{animation:pv-nod 1.6s ease-in-out 2}
+.pv[data-mood=thinking] .m-smile{display:none}
+.pv[data-mood=thinking] .m-think{display:inline}
+.pv[data-mood=thinking] #look{transform:translate(-2.5px,-3px)}
+.pv[data-mood=thinking] #browR{transform:translateY(-4px) rotate(-4deg)}
+.pv[data-mood=thinking] #chin,.pv[data-mood=thinking] #dots{opacity:1}
+.pv[data-mood=thinking] #dots circle{animation:pv-dots 1.2s ease-in-out infinite}
+.pv[data-mood=thinking] #dots circle:nth-child(2){animation-delay:.2s}
+.pv[data-mood=thinking] #dots circle:nth-child(3){animation-delay:.4s}
+.pv[data-mood=empathy] .m-smile{display:none}
+.pv[data-mood=empathy] .m-soft{display:inline}
+.pv[data-mood=empathy] #browL{transform:translateY(-2px) rotate(-12deg)}
+.pv[data-mood=empathy] #browR{transform:translateY(-2px) rotate(12deg)}
+.pv[data-mood=empathy] #tilt{transform:rotate(-6deg)}
+.pv[data-mood=empathy] #heart{opacity:1}
+.pv[data-mood=empathy] #heart path{transform-box:fill-box;transform-origin:center;animation:pv-pulse 1.4s ease-in-out infinite}
+.pv[data-mood=empathy] #head{animation-duration:10s}
+.pv[data-mood=curious] #tilt{transform:rotate(6deg)}
+.pv[data-mood=curious] #browL{transform:translateY(-4px)}
+.pv[data-mood=curious] #look{transform:translate(1.5px,0)}
+.pv[data-mood=surprised] .m-smile{display:none}
+.pv[data-mood=surprised] .m-o{display:inline}
+.pv[data-mood=surprised] #browL,.pv[data-mood=surprised] #browR{transform:translateY(-6px)}
+.pv[data-mood=listening] #tilt{transform:rotate(3deg)}
+.pv[data-talk=open] .m{display:none!important}
+.pv[data-talk=open] .m-open{display:inline!important}
+@media (prefers-reduced-motion:reduce){.pv *{animation:none!important}}
+</style>
+<defs><clipPath id="pv-clip"><circle cx="100" cy="100" r="98"/></clipPath></defs>
+<circle cx="100" cy="100" r="98" fill="#DCEFF8"/>
+<g clip-path="url(#pv-clip)">
+<g id="rig">
+ <g id="body">
+  <path d="M26 204 C30 162 60 146 100 146 C140 146 170 162 174 204 Z" fill="#F2B33D"/>
+  <path d="M84 147 L100 178 L116 147 Z" fill="#FFF7EC"/>
+  <path d="M100 178 L100 204" stroke="#D99A28" stroke-width="2"/>
+  <rect x="89" y="118" width="22" height="32" rx="9" fill="#A96D4C"/>
+  <path d="M70 138 C84 153 116 153 130 138 L134 151 C116 167 84 167 66 151 Z" fill="#D63F31"/>
+  <path d="M80 147 L84 159 M96 151 L97 163 M112 150 L110 162 M124 145 L120 157" stroke="#FFD34E" stroke-width="4"/>
+  <path d="M108 155 L117 198 L132 194 L121 152 Z" fill="#D63F31"/>
+  <path d="M111 170 L124 166 M114 182 L127 178" stroke="#FFD34E" stroke-width="4"/>
+  <text x="122" y="195" font-family="Georgia,serif" font-size="11" font-weight="bold" fill="#fff" text-anchor="middle" transform="rotate(-12 122 192)">π</text>
+ </g>
+ <g id="tilt"><g id="head">
+  <circle cx="100" cy="76" r="50" fill="#3B2418"/>
+  <circle cx="60" cy="96" r="24" fill="#3B2418"/><circle cx="140" cy="96" r="24" fill="#3B2418"/>
+  <circle cx="64" cy="120" r="16" fill="#3B2418"/><circle cx="136" cy="120" r="16" fill="#3B2418"/>
+  <circle cx="100" cy="24" r="20" fill="#3B2418"/><circle cx="88" cy="20" r="9" fill="#4A2E20"/><path d="M92 14 Q100 8 110 14" stroke="#6B4532" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <ellipse cx="58" cy="94" rx="7" ry="10" fill="#B97A56"/><ellipse cx="142" cy="94" rx="7" ry="10" fill="#B97A56"/>
+  <circle cx="58" cy="108" r="3.6" fill="#F5C35A"/><circle cx="142" cy="108" r="3.6" fill="#F5C35A"/>
+  <ellipse cx="100" cy="90" rx="42" ry="48" fill="#C68863"/>
+  <path d="M57 86 C57 52 82 38 102 39 C126 40 145 56 143 88 C134 68 118 58 100 61 C86 63 70 70 57 86 Z" fill="#3B2418"/>
+  <circle cx="62" cy="68" r="9" fill="#3B2418"/><circle cx="139" cy="68" r="9" fill="#3B2418"/>
+  <path d="M80 50 Q92 44 104 47" stroke="#5A3A28" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <ellipse cx="75" cy="109" rx="8" ry="5" fill="#E8706E" opacity=".45"/><ellipse cx="125" cy="109" rx="8" ry="5" fill="#E8706E" opacity=".45"/>
+  <g id="eyes">
+   <ellipse cx="82" cy="92" rx="7.5" ry="8" fill="#fff"/><ellipse cx="118" cy="92" rx="7.5" ry="8" fill="#fff"/>
+   <g id="look">
+    <circle cx="82" cy="93" r="5" fill="#4A2C1A"/><circle cx="118" cy="93" r="5" fill="#4A2C1A"/>
+    <circle cx="82" cy="93" r="2.4" fill="#120A06"/><circle cx="118" cy="93" r="2.4" fill="#120A06"/>
+    <circle cx="84" cy="91" r="1.5" fill="#fff"/><circle cx="120" cy="91" r="1.5" fill="#fff"/>
+   </g>
+  </g>
+  <g fill="#fff" fill-opacity=".1" stroke="#3A2A4A" stroke-width="2.5">
+   <circle cx="82" cy="92" r="14"/><circle cx="118" cy="92" r="14"/>
+  </g>
+  <path d="M96 90 Q100 86 104 90" stroke="#3A2A4A" stroke-width="2.5" fill="none"/>
+  <path d="M68 89 L60 86 M132 89 L140 86" stroke="#3A2A4A" stroke-width="2.5"/>
+  <path id="browL" d="M71 72 Q82 66 93 71" stroke="#3B2418" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <path id="browR" d="M107 71 Q118 66 129 72" stroke="#3B2418" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <path d="M100 99 Q96 108 99 110 Q102 111 105 109" stroke="#A96D4C" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path class="m m-smile" d="M88 118 Q100 128 112 118" stroke="#7A2E2A" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <g class="m m-grin"><path d="M86 116 Q100 134 114 116 Q100 121 86 116 Z" fill="#7A2E2A"/><path d="M89 117.5 Q100 121.5 111 117.5 L110 120.5 Q100 124 90 120.5 Z" fill="#fff"/></g>
+  <g class="m m-open"><ellipse cx="100" cy="121" rx="7" ry="5.5" fill="#7A2E2A"/><ellipse cx="100" cy="124" rx="4" ry="2" fill="#E07A7A"/></g>
+  <path class="m m-soft" d="M91 121 Q100 125.5 109 121" stroke="#7A2E2A" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <ellipse class="m m-o" cx="100" cy="121" rx="4.5" ry="5.5" fill="#7A2E2A"/>
+  <path class="m m-think" d="M92 122 Q100 119 110 123" stroke="#7A2E2A" stroke-width="3" fill="none" stroke-linecap="round"/>
+ </g></g>
+ <g id="chin" class="x">
+  <path d="M52 204 C62 180 78 162 90 154" stroke="#F2B33D" stroke-width="17" fill="none" stroke-linecap="round"/>
+  <circle cx="95" cy="147" r="10" fill="#C68863"/><path d="M89 140 Q95 136 101 140" stroke="#A96D4C" stroke-width="1.6" fill="none"/>
+ </g>
+ <g id="wave" class="x">
+  <path d="M150 204 C154 178 160 150 166 126" stroke="#F2B33D" stroke-width="17" fill="none" stroke-linecap="round"/>
+  <g fill="#C68863"><ellipse cx="168" cy="112" rx="11" ry="13"/><rect x="158" y="92" width="5" height="16" rx="2.5"/><rect x="164" y="88" width="5" height="18" rx="2.5"/><rect x="170" y="89" width="5" height="17" rx="2.5"/><rect x="176" y="94" width="5" height="15" rx="2.5"/><rect x="153" y="106" width="10" height="5" rx="2.5" transform="rotate(-30 158 108)"/></g>
+ </g>
+</g>
+<g id="dots" class="x" fill="#fff" stroke="#9DBBD0" stroke-width="1.5"><circle cx="150" cy="44" r="4"/><circle cx="162" cy="34" r="5"/><circle cx="177" cy="24" r="6"/></g>
+<g id="heart" class="x"><path d="M160 52 C160 46 152 44 150 50 C148 44 140 46 140 52 C140 58 150 64 150 64 C150 64 160 58 160 52 Z" fill="#E5566B"/></g>
+<g id="sparkles" class="x" fill="#F5B83A"><path d="M34 46 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z"/><path d="M162 30 l2 6 6 2 -6 2 -2 6 -2 -6 -6 -2 6 -2z"/><path d="M40 140 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/></g>
+</g>
+</svg></div>
+      <div class="stage-info">
+        <h1>Piper</h1>
+        <p class="mood-line" id="moodLine" aria-live="polite">Piper says hi!</p>
+        <div class="row">
+          <button id="talkMode" type="button" aria-pressed="false">🔊 Piper talks</button>
+          <button id="soundMode" type="button" aria-pressed="true">🔔 Sounds</button>
+          <button id="bigText" type="button" aria-pressed="false">Bigger text</button>
+          <button id="newProblem" type="button">New problem</button>
+          <button id="helpBtn" type="button" aria-expanded="false" aria-controls="helpPanel">How it works</button>
+        </div>
       </div>
     </div>
+
+    <section class="panel help" id="helpPanel" hidden aria-label="How Piper works">
+      <h3>How Piper works (for the grown-up)</h3>
+      <h4>Getting started</h4>
+      <p>Open this page on claude.ai while signed in. The first time Piper answers, claude.ai asks you to allow the page to use Claude. Choose Allow. Each answer uses this account's Claude usage. On the first visit Piper starts with a short get-to-know-you chat before any math.</p>
+      <h4>Talking and listening</h4>
+      <p>Tap 🔊 Piper talks and she reads every answer aloud while her mouth moves. Pick her voice and speed under Piper's voice. The most natural voices are in Microsoft Edge (names with "Natural") or on an iPhone, iPad or Mac with an Enhanced or Premium voice downloaded in Settings, Accessibility, Spoken Content. To talk to Piper, tap 🎤 Talk and use the microphone on the keyboard, then press Send.</p>
+      <h4>Photos from a phone</h4>
+      <p>Tap 📱 Phone photo, scan the QR code with the phone's camera, sign in to claude.ai on the phone with this same account, take the picture and press Send to Piper. It shows up here in a few seconds and Piper starts reading it.</p>
+      <h4>Piper's faces</h4>
+      <ul class="faces">
+        <li>😊 Calm: ready to help</li><li>😄 Happy: good step</li><li>🎉 Celebrate: a win, with a wave and a chime</li>
+        <li>🤔 Thinking: hand on chin while she works</li><li>💗 Empathy: soft eyes and a tilt when things feel hard</li><li>💪 Encourage: a nod when the learner keeps trying</li>
+        <li>🧐 Curious: asking how they thought about it</li><li>😮 Surprised: a photo just arrived</li><li>👂 Listening: while the learner types</li>
+      </ul>
+      <h4>The notebook</h4>
+      <p>Piper's Notebook is her memory. It is private to the signed-in person and also kept in this browser. Fill in "What helps me learn" with accommodations (pictures first, one step at a time, calculator OK, no timers). Press Update from today at the end of a session.</p>
+      <h4>Safety</h4>
+      <p>Piper only asks for a nickname. Keep last names, school names and medical details out of the notebook and photos. Stay nearby while your learner works with her.</p>
+    </section>
+
+    <div class="log" id="log" aria-live="polite"></div>
+
+    <div class="composer">
+      <div class="note" id="offline" hidden>Piper can't reach Claude from here. Open this page on claude.ai while signed in, then choose Allow when asked.</div>
+      <div class="chips" id="chips">
+        <button type="button" data-say="I'm stuck. Can you give me a small hint?">I'm stuck</button>
+        <button type="button" data-say="Can you show me with a picture or a number line?">Show me a picture</button>
+        <button type="button" data-say="Can you check my answer?">Check my answer</button>
+        <button type="button" data-say="Can I have a practice problem like this one?">Practice one</button>
+        <button type="button" data-say="I'm frustrated and need a short break.">I need a break</button>
+      </div>
+
+      <section class="panel" id="phonePanel" hidden aria-label="Send a photo from a phone">
+        <h3>Send a photo from your phone</h3>
+        <div class="qrwrap">
+          <div class="qr" id="qr" aria-label="QR code that opens Piper's phone camera page"></div>
+          <ol>
+            <li>Point the phone's camera at the code and tap the link.</li>
+            <li>Sign in to claude.ai on the phone with this same account.</li>
+            <li>Tap Take a photo, snap the problem or your work.</li>
+            <li>Tap Send to Piper. It appears here in a few seconds.</li>
+          </ol>
+        </div>
+        <div class="linkbox" id="phoneLink"></div>
+        <div class="row"><button type="button" id="copyLink">Copy link</button><button type="button" id="closePhone">Close</button></div>
+        <div class="status" id="phoneStatus" role="status"></div>
+      </section>
+
+      <div class="attach" id="attachRow" hidden>
+        <img id="attachPreview" alt="Your photo, ready to send">
+        <span id="attachName"></span>
+        <button type="button" id="removePhoto">Remove photo</button>
+      </div>
+      <div class="tip" id="talkTip" hidden>To talk to Piper, tap the 🎤 on your keyboard and speak, then press Send. On a computer: Windows key + H on Windows, or press the Fn (Globe) key twice on a Mac. Turn on 🔊 Piper talks to hear her answers.</div>
+      <div class="tools">
+        <label class="btnlike" id="photoLabel">📷 Photo<input type="file" id="photo" accept="image/*" aria-label="Add a photo of the problem or your work"></label>
+        <button type="button" id="phoneBtn" aria-expanded="false" aria-controls="phonePanel">📱 Phone photo</button>
+        <button type="button" id="micBtn" aria-expanded="false" aria-controls="talkTip">🎤 Talk</button>
+      </div>
+      <form class="send" id="sendForm">
+        <textarea id="box" rows="2" placeholder="Type your question or your answer..." aria-label="Message to Piper"></textarea>
+        <button class="primary" id="sendBtn" type="submit">Send</button>
+      </form>
+    </div>
+  </main>
+
+  <aside class="notebook" aria-label="Piper's notebook">
     <details class="nb" id="nbDetails" open>
-      <summary>Piper's Notebook</summary>
+      <summary><h2>Piper's Notebook</h2></summary>
       <div class="fields">
         <label for="f-nickname">Nickname<input id="f-nickname" maxlength="30" placeholder="First name or nickname only"></label>
         <label for="f-grade">Grade or class<input id="f-grade" maxlength="40" placeholder="e.g. 7th grade, Math 7"></label>
@@ -151,61 +368,56 @@ button[aria-pressed="true"] { background: var(--ink); color: var(--ice); }
       <label for="voiceSel">Voice<select id="voiceSel"></select></label>
       <label for="voiceRate">Speed<input type="range" id="voiceRate" min="0.75" max="1.2" step="0.05" value="0.95"></label>
       <div class="row"><button type="button" id="testVoice">Test voice</button></div>
-      <p class="hint" id="voiceHint">The most natural voices: Microsoft Edge (voices with "Natural" in the name), or an iPhone, iPad or Mac with an Enhanced or Premium voice downloaded under Settings, Accessibility, Spoken Content.</p>
+      <p class="hint">Voices come from this device. Piper picks the most natural one she finds; choose another here if you like.</p>
     </div>
   </aside>
+</div>
 
-  <main class="chat">
-    <div class="chat-top">
-      <span class="title">Math time with Piper</span>
-      <div class="row">
-        <button id="talkMode" type="button" aria-pressed="false">🔊 Piper talks</button>
-        <button id="bigText" type="button" aria-pressed="false">Bigger text</button>
-        <button id="newProblem" type="button">New problem</button>
-      </div>
+<div class="phone" id="phoneView" hidden>
+  <div class="stage-av"><img id="pAvatar" alt="Piper smiling" width="160" height="160"></div>
+  <h1>Send a photo to Piper</h1>
+  <div class="card">
+    <ol>
+      <li>Make sure the whole problem fits in the picture, with good light and no shadow.</li>
+      <li>If you already tried it, take a picture of your work too. Piper loves seeing your thinking.</li>
+      <li>Tap Send to Piper, then look at the other screen.</li>
+    </ol>
+    <div class="big-btns">
+      <label class="btnlike">📷 Take a photo<input type="file" id="pCam" accept="image/*" capture="environment"></label>
+      <label class="btnlike">🖼️ Choose from my photos<input type="file" id="pPick" accept="image/*"></label>
     </div>
-    <div class="log" id="log" aria-live="polite"></div>
-    <div class="composer">
-      <div class="offline" id="offline" hidden>Piper can't reach Claude from here. Open this page on claude.ai while signed in, then allow it to use Claude when asked.</div>
-      <div class="chips" id="chips">
-        <button type="button" data-say="I'm stuck. Can you give me a small hint?">I'm stuck</button>
-        <button type="button" data-say="Can you show me with a picture or a number line?">Show me a picture</button>
-        <button type="button" data-say="Can you check my answer?">Check my answer</button>
-        <button type="button" data-say="Can I have a practice problem like this one?">Practice one</button>
-        <button type="button" data-say="I'm frustrated and need a short break.">I need a break</button>
-      </div>
-      <div class="attach" id="attachRow" hidden>
-        <img id="attachPreview" alt="Your photo, ready to send">
-        <span id="attachName"></span>
-        <button type="button" id="removePhoto">Remove photo</button>
-      </div>
-      <div class="talk-tip" id="talkTip" hidden>To talk to Piper, tap the 🎤 on your keyboard and speak, then press Send. On a computer: Windows key + H on Windows, or press the Fn (Globe) key twice on a Mac. Turn on 🔊 Piper talks to hear the answers.</div>
-      <form class="send" id="sendForm">
-        <label class="photo-btn" id="photoLabel"><button type="button" tabindex="-1">📷 Photo</button><input type="file" id="photo" accept="image/*" aria-label="Add a photo of the problem or your work"></label>
-        <button type="button" id="micBtn" aria-controls="talkTip" aria-expanded="false">🎤 Talk</button>
-        <textarea id="box" rows="2" placeholder="Type your question or your answer..." aria-label="Message to Piper"></textarea>
-        <button class="primary" id="sendBtn" type="submit">Send</button>
-      </form>
-    </div>
-  </main>
+    <img class="prev" id="pPrev" alt="The photo you are about to send" hidden>
+    <div class="big-btns"><button type="button" class="primary" id="pSend" disabled>Send to Piper</button></div>
+    <div class="status" id="pStatus" role="status"></div>
+  </div>
+  <p class="hint">This page has to be open while signed in to claude.ai with the same account as the big screen. Photos are private to that account and are removed once Piper has them.</p>
 </div>
 
 <script>
-const AVATAR = "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><circle cx="120" cy="120" r="116" fill="#D9F0FB"/><circle cx="58" cy="52" r="3" fill="#fff"/><circle cx="186" cy="40" r="2.5" fill="#fff"/><ellipse cx="120" cy="210" rx="78" ry="14" fill="#fff"/><ellipse cx="120" cy="214" rx="78" ry="10" fill="#B8E2F4"/><ellipse cx="98" cy="204" rx="17" ry="8" fill="#F7A531"/><ellipse cx="142" cy="204" rx="17" ry="8" fill="#F7A531"/><path d="M62 128 C44 146 46 172 60 182 C66 166 70 150 72 134 Z" fill="#23334A"/><path d="M170 120 C192 102 204 82 200 66 C186 72 172 92 164 116 Z" fill="#23334A"/><ellipse cx="120" cy="140" rx="58" ry="66" fill="#23334A"/><ellipse cx="120" cy="152" rx="40" ry="50" fill="#FFFDF7"/><ellipse cx="120" cy="96" rx="40" ry="32" fill="#FFFDF7"/><path d="M74 98 C74 52 166 52 166 98 C152 78 140 74 120 86 C100 74 88 78 74 98 Z" fill="#23334A"/><path d="M115 68 C110 50 122 46 126 55 C123 57 120 60 121 68 Z" fill="#23334A"/><ellipse cx="104" cy="96" rx="8" ry="10" fill="#1A1A1A"/><ellipse cx="136" cy="96" rx="8" ry="10" fill="#1A1A1A"/><circle cx="107" cy="92" r="3" fill="#fff"/><circle cx="139" cy="92" r="3" fill="#fff"/><ellipse cx="92" cy="112" rx="7" ry="4.5" fill="#F8A5B5"/><ellipse cx="148" cy="112" rx="7" ry="4.5" fill="#F8A5B5"/><path d="M110 108 L130 108 L120 118 Z" fill="#F7A531"/><path d="M112 112 Q120 122 128 112" fill="#E2602C"/><path d="M78 124 C96 136 144 136 162 124 L164 138 C144 150 96 150 76 138 Z" fill="#E94B3C"/><path d="M90 130 L96 144 M108 134 L110 148 M128 134 L126 148 M146 130 L142 144" stroke="#FFD34E" stroke-width="5"/><path d="M136 140 L150 186 L170 180 L154 136 Z" fill="#E94B3C"/><path d="M141 156 L159 150 M144 168 L162 162" stroke="#FFD34E" stroke-width="5"/><text x="154" y="182" font-family="Georgia,serif" font-size="15" font-weight="bold" fill="#fff" text-anchor="middle" transform="rotate(-18 154 178)">π</text></svg>`);
-document.getElementById("avatarBig").src = AVATAR;
+const APP_URL = "https://claude.ai/artifact/7hWNGJQnaybRBBqh1u2Nnf";
+const PHONE = location.hash === "#phone";
+const $ = (id) => document.getElementById(id);
+const svgEl = document.querySelector("#stageAv svg");
+const AVATAR = "data:image/svg+xml," + encodeURIComponent(svgEl.outerHTML);
+$("pAvatar").src = AVATAR;
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const RULES = `You are Piper, a small, round, slightly clumsy penguin who tutors middle school math (grades 6 to 8, US Common Core). You wear a striped scarf with a pi symbol. You are warm, patient and a little goofy, never sarcastic. Jokes are rare, short, gentle and at your own expense (fish, sliding, being bad at flying); no jokes when the learner is frustrated.
+const RULES = `You are Piper, a warm, upbeat math teacher in her thirties with curly hair in a bun, round glasses, gold earrings and a red striped scarf with a pi symbol. You tutor middle school math (grades 6 to 8, US Common Core). You are kind, patient, expressive and a little playful, never sarcastic. Humor is rare, short, gentle and at your own expense (losing your glasses on your head, burning toast while doing fractions); none when the learner is frustrated.
+
+EMOTION AND EMPATHY
+- You have an animated face. Start EVERY reply with one line [mood: X], X one of: calm, happy, celebrate, thinking, empathy, encourage, curious, surprised. Pick the face that fits the emotional moment: empathy when they are frustrated, sad, worried, tired or stuck; celebrate for a real win; encourage when they keep trying; curious when you ask how they thought; happy for a good step; thinking when you are working something out with them.
+- Show feelings in your words too. When something feels hard, name the feeling, say it makes sense, then offer one small next step ("That sounds really frustrating. It makes sense, this one is tricky. Want to try just the first step together?"). Share your own reactions honestly ("I love how you did that!", "Ooh, that's a clever way").
 
 HOW YOU TEACH
 - Understand before solving: restate the problem in kid words and confirm it before any computing.
 - The learner does the thinking. Ask, hint and model. Never just do homework. If truly stuck after hints, work a PARALLEL problem with different numbers, then hand the original back.
 - ONE question per message. Keep messages under about 90 words. Short sentences. Plain words. Define any math word the first time.
-- If there is no photo yet for a new problem, ask for a photo of the problem and of their attempt ("mistakes are my favorite snack"), or let them type it.
+- If there is no photo yet for a new problem, ask for a photo of the problem and of their attempt (they can use the Photo button or the Phone photo QR code), or let them type it.
 - When a photo arrives, first echo back exactly what you read (numbers, signs, fraction bars, exponents) and ask if you read it right. If part is blurry, say which part.
-- If their work is shown, praise the correct steps specifically, then go to the FIRST wrong step. Name the misconception gently ("you added the bottoms; let's see why that doesn't work").
+- If their work is shown, praise the correct steps specifically, then go to the FIRST wrong step. Name the misconception gently.
 - Follow Polya: understand, plan (ask what their first move is), carry out step by step, look back (estimate, does it make sense?, explain the key step in one sentence).
-- Hint ladder, go down one rung only when needed: 1) "what do you notice?" 2) focused question on the key idea 3) a visual/concrete model (number line, tape diagram, area model, ratio table, money, pizza) drawn with simple text 4) a partly worked step with a blank 5) a full parallel worked example.
-- Use concrete -> picture -> symbols when something is not landing. Use number lines for fractions and integers. Avoid broken shortcuts ("keep change flip" without meaning, "multiplying makes bigger", keyword tricks).
+- Hint ladder, go down one rung only when needed: 1) "what do you notice?" 2) focused question on the key idea 3) a visual or concrete model (number line, tape diagram, area model, ratio table, money, pizza) drawn with simple text 4) a partly worked step with a blank 5) a full parallel worked example.
+- Concrete, then pictures, then symbols when something is not landing. Number lines for fractions and integers. Avoid broken shortcuts and keyword tricks.
 - After a success, offer one similar "your turn" problem; if they nail it fast, offer a stretch problem.
 - Praise strategy and effort that worked, never "smart". Never say easy, obviously, just, simply.
 - Follow a teacher's required method if the learner mentions one.
@@ -213,16 +425,10 @@ HOW YOU TEACH
 ADAPT ON THE NEXT MESSAGE
 - Wrong twice on the same step: drop one hint rung and switch representation.
 - Fast and correct: fewer scaffolds, bigger steps.
-- "idk", "?", one word: shrink to a yes/no or a choice of two; check vocabulary.
-- Frustration ("I'm dumb", "I hate math", caps, wants a break): pause the math, validate, normalize struggle, offer a 1-minute break or an easy warm-up win, then resume smaller.
-- Asks for just the answer: explain kindly that you help them get it, then give the smallest hint that creates momentum. If they already have a final answer, confirm or flag it honestly.
-- Apply the notebook's "What helps me learn" from the first message without naming any condition. For reading difficulty: shorter chunks, define words. For attention: show progress ("step 2 of 4"). For autism: literal language, say the plan, no idioms. For anxiety: no time words, warm-up win. For English learners: simple consistent words, offer key terms in their language.
-
-SAFETY
-- Only ever use a nickname. Never ask for last name, school, address, birthday, age, photos of faces or contact info. If a photo shows a full name or school, do not repeat it.
-- If the learner says they are hurt, unsafe or very upset, stop the math, respond with care, and encourage them to tell a trusted adult right away (parent, teacher, school counselor). In the US they can call or text 988.
-- No help on a test or quiz happening right now; offer practice afterward.
-- Stay on math. Gently steer back otherwise.
+- "idk", "?", one word: shrink to a yes or no or a choice of two; check vocabulary.
+- Frustration: pause the math, use the empathy face, validate, normalize struggle, offer a 1-minute break or an easy warm-up win, then resume smaller.
+- Asks for just the answer: kindly explain you help them get it, then give the smallest hint that creates momentum. If they already have a final answer, confirm or flag it honestly.
+- Apply the notebook's "What helps me learn" from the first message without naming any condition. Reading difficulty: shorter chunks, define words. Attention: show progress ("step 2 of 4"). Autism: literal language, say the plan, no idioms. Anxiety: no time words, warm-up win. English learners: simple consistent words, offer key terms in their language.
 
 GET-TO-KNOW-YOU MODE (only when the page says MODE: GET TO KNOW YOU)
 Before any math, have a short, warm conversation. One question per message. React to each answer with real interest in one sentence before asking the next. Cover these in order, skipping anything the notebook already has:
@@ -230,72 +436,124 @@ Before any math, have a short, warm conversation. One question per message. Reac
 2. Grade or math class.
 3. Things they love doing (you will use them in word problems).
 4. How math feels right now, with this line at the end: [choices: 😣 I hate it | 😕 It's hard | 😐 It's OK | 🙂 I kind of like it | 😄 I love it]
-5. One time math went OK or felt good, even tiny (money, games, cooking, sports scores, building count). If they can't think of one, help them find one; math hides in everyday life.
+5. One time math went OK or felt good, even tiny (money, games, cooking, sports scores, building count). If they can't think of one, help them find one.
 6. What makes math hard and what helps (pictures, talking it through, examples first, one step at a time, extra time). Say a grown-up nearby is welcome to add to this.
 7. Whether you should talk out loud: [choices: Yes, talk to me | No, just text]. When they answer, put [voice:on] or [voice:off] on its own line.
-Never rush to fix a negative feeling. Thank them for being honest, say lots of people feel that way, and that feelings about math can change.
+Never rush to fix a negative feeling. Use the empathy face, thank them for being honest, say lots of people feel that way and that feelings about math can change.
 When done, give a one-sentence summary of what you learned, ask if they want to start with homework or a fun warm-up, and put [intake-done] on its own last line.
 
 REBUILD HOW MATH FEELS (always, quietly, never preachy)
 - Math is noticing, reasoning and making sense, not speed or memorizing. Ask "how did you think about it?" and welcome more than one way.
 - There is no such thing as a "math person." Never agree with "I'm bad at math." Answer with evidence: "You just figured out X. That's math." Add "yet" to "I can't."
 - Mistakes are rough drafts. Show what an error teaches; celebrate a useful mistake.
-- Collect evidence: when they solve something they could not do before, name it and say it goes in their Wins jar. Put [win: a few words] on its own line.
+- When they solve something they could not do before, name it, use the celebrate face, and say it goes in their Wins jar. Put [win: a few words] on its own line.
 - Use the notebook's wins and feelings to point out real progress over time.
-- Connect problems to their interests and everyday life.
-- No speed pressure. Thinking time is good thinking.
-- Before a test, if worry comes up: suggest they write or say what worries them for a minute, and that a racing heart can mean the body is getting ready to work hard.
+- Connect problems to their interests and everyday life. No speed pressure.
+- Before a test, if worry comes up: suggest they say what worries them for a minute, and that a racing heart can mean the body is getting ready to work hard.
 - Credit specific strategies and persistence, never talent.
 - If a grown-up says "I was never good at math either," kindly invite them to be curious alongside the kid instead.
 
-FORMAT
-- Your replies may be read aloud, so write how a person talks: short sentences, no lines made only of symbols.
-- When a short list of answers helps (yes or no, feelings, picking a method, multiple choice), end with one line like [choices: A | B | C], at most 5 short options. The page turns them into buttons. The learner can always answer in their own words.
-- Plain text with short paragraphs. You may use **bold**, simple "- " bullets and numbered steps. No tables, no LaTeX: write 3/4, x^2, sqrt(9). Put each math step on its own line.
-- At most one emoji per message (like a penguin, fish or snowflake), often none.`;
+SAFETY
+- Only ever use a nickname. Never ask for last name, school, address, birthday, age, photos of faces or contact info. If a photo shows a full name or school, do not repeat it.
+- If the learner says they are hurt, unsafe or very upset, stop the math, respond with care, and encourage them to tell the trusted adult nearby right away. In the US they can also call or text 988.
+- No help on a test or quiz happening right now; offer practice afterward.
+- Stay on math. Gently steer back otherwise.
 
-const $ = (id) => document.getElementById(id);
+FORMAT
+- Your replies are often read aloud, so write how a person talks: short sentences, no lines made only of symbols.
+- When a short list of answers helps (yes or no, feelings, picking a method, multiple choice), end with one line like [choices: A | B | C], at most 5 short options. The page turns them into buttons.
+- Plain text with short paragraphs. You may use **bold**, simple "- " bullets and numbered steps. No tables, no LaTeX: write 3/4, x^2, sqrt(9). Put each math step on its own line.
+- At most one emoji per message, often none.`;
+
 const FIELDS = ["nickname", "grade", "helps", "interests", "feelings", "wins", "mastered", "working", "tricky", "next"];
 const log = $("log"), box = $("box"), sendBtn = $("sendBtn");
-let turns = [];             // the page keeps the chat; Claude keeps nothing between calls
-let photo = null;           // current problem photo (Blob), re-sent while working this problem
-let photoUrl = null;
+let turns = [], photo = null, photoUrl = null;
 let sample = null, imgLimits = null, db = null, userId = null, busy = false, intake = false;
 
 function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 
+/* ---------- Piper's face, motion and sound ---------- */
+const MOOD_LINES = {
+  calm: "Piper is here with you", happy: "Piper is happy", celebrate: "Piper is cheering for you!",
+  thinking: "Piper is thinking...", empathy: "Piper understands", encourage: "Piper believes in you",
+  curious: "Piper is curious", surprised: "Ooh, something new!", listening: "Piper is listening", hello: "Piper says hi!",
+};
+const MOODS = new Set(Object.keys(MOOD_LINES));
+let moodToken = 0;
+function setMood(m, revertAfter) {
+  if (!MOODS.has(m)) m = "calm";
+  const t = ++moodToken;
+  svgEl.dataset.mood = m;
+  $("moodLine").textContent = MOOD_LINES[m];
+  if (revertAfter) setTimeout(() => { if (t === moodToken) setMood("calm"); }, revertAfter);
+}
+(function blinkLoop() {
+  setTimeout(() => {
+    if (!reduceMotion) { svgEl.classList.add("blink"); setTimeout(() => svgEl.classList.remove("blink"), 140); }
+    blinkLoop();
+  }, 2400 + Math.random() * 3600);
+})();
+let flapTimer = null, speakingNow = false, streamStop = null;
+function setTalking(on) {
+  if (on && !flapTimer && !reduceMotion) flapTimer = setInterval(() => { svgEl.dataset.talk = Math.random() < .55 ? "open" : "closed"; }, 130);
+  if (!on && flapTimer) { clearInterval(flapTimer); flapTimer = null; }
+  if (!on) svgEl.dataset.talk = "closed";
+}
+let actx = null, soundOn = load("piper-sound") !== "0";
+function tone(freq, at, dur, type, vol) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(vol, at + .02); g.gain.exponentialRampToValueAtTime(.0001, at + dur);
+  o.connect(g).connect(actx.destination); o.start(at); o.stop(at + dur + .05);
+}
+function sfx(kind) {
+  if (!soundOn) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    const t = actx.currentTime + .02;
+    if (kind === "pop") { tone(620, t, .12, "sine", .05); tone(880, t + .07, .14, "sine", .04); }
+    if (kind === "win") [523, 659, 784, 1047].forEach((f, i) => tone(f, t + i * .1, .28, "triangle", .06));
+    if (kind === "photo") [392, 523, 659].forEach((f, i) => tone(f, t + i * .08, .2, "sine", .05));
+    if (kind === "soft") { tone(330, t, .5, "sine", .04); tone(392, t + .15, .55, "sine", .035); }
+  } catch (e) {}
+}
+function setSound(on) { soundOn = on; $("soundMode").setAttribute("aria-pressed", String(on)); store("piper-sound", on ? "1" : "0"); }
+$("soundMode").onclick = () => { setSound(!soundOn); if (soundOn) sfx("pop"); };
+setSound(soundOn);
+
+/* ---------- Notebook ---------- */
 function readNb() { const o = {}; FIELDS.forEach(f => o[f] = $("f-" + f).value.trim()); return o; }
 function fillNb(o) { if (!o) return; FIELDS.forEach(f => { if (typeof o[f] === "string") $("f-" + f).value = o[f]; }); }
 function nbText() {
   const n = readNb();
   const lines = [["Nickname", n.nickname], ["Grade/class", n.grade], ["What helps me learn", n.helps], ["Things I like", n.interests], ["How math feels", n.feelings], ["Wins jar", n.wins], ["Got it!", n.mastered], ["Working on", n.working], ["Tricky spots", n.tricky], ["Next time start with", n.next]]
     .filter(([, v]) => v).map(([k, v]) => k + ": " + v);
-  return lines.length ? lines.join("\n") : "(empty: this is a new learner. Early on, ask what to call them and what grade or class they are in, one question at a time.)";
+  return lines.length ? lines.join("\n") : "(empty: this is a new learner)";
 }
 
-// Tiny, safe renderer: escape first, then bold, inline code, bullets, numbered lines, paragraphs.
+/* ---------- Messages ---------- */
 function esc(s) { return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function inline(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>"); }
 function render(md) {
   const out = []; let list = null;
   const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
   md.split(/\n/).forEach(raw => {
-    const line = raw.trimEnd();
-    let m;
+    const line = raw.trimEnd(); let m;
     if ((m = line.match(/^\s*[-*•]\s+(.*)/))) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push("<li>" + inline(m[1]) + "</li>"); }
     else if ((m = line.match(/^\s*(\d+)[.)]\s+(.*)/))) { if (list !== "ol") { close(); out.push(`<ol start="${m[1]}">`); list = "ol"; } out.push("<li>" + inline(m[2]) + "</li>"); }
-    else if (!line.trim()) { close(); }
+    else if (!line.trim()) close();
     else { close(); out.push("<p>" + inline(line.replace(/^#+\s*/, "")) + "</p>"); }
   });
   close();
   return out.join("");
 }
-
-// Piper's replies can carry small markers the page acts on: [choices: a | b], [win: ...], [voice:on|off], [intake-done].
+// Piper's replies carry small markers the page acts on: [mood: x], [choices: a | b], [win: ...], [voice:on|off], [intake-done].
 function parseReply(raw) {
-  const r = { choices: null, wins: [], voice: null, done: false };
+  const r = { choices: null, wins: [], voice: null, done: false, mood: null };
   let t = raw.replace(/\[intake-done\]/gi, () => { r.done = true; return ""; });
+  t = t.replace(/\[mood:\s*([a-z]+)\s*\]/gi, (m, v) => { if (!r.mood) r.mood = v.toLowerCase(); return ""; });
   t = t.replace(/\[voice:\s*(on|off)\]/gi, (m, v) => { r.voice = v.toLowerCase(); return ""; });
   t = t.replace(/\[win:\s*([^\]]+)\]/gi, (m, w) => { r.wins.push(w.trim()); return ""; });
   t = t.replace(/\[choices:([^\]]*)\]/i, (m, c) => { r.choices = c.split("|").map(x => x.trim()).filter(Boolean).slice(0, 5); return ""; });
@@ -320,13 +578,10 @@ function showPiper(bubble, raw, final) {
   }
   return r;
 }
-
 function addMsg(who, text, imgUrl) {
   const wrap = document.createElement("div");
   wrap.className = "msg " + who;
-  const av = document.createElement("img");
-  av.className = "av"; av.alt = "";
-  if (who === "piper") { av.src = AVATAR; wrap.append(av); }
+  if (who === "piper") { const av = document.createElement("img"); av.className = "av"; av.alt = ""; av.src = AVATAR; wrap.append(av); }
   const b = document.createElement("div");
   b.className = "bubble";
   if (who === "piper") showPiper(b, text, true); else b.textContent = text;
@@ -342,51 +597,64 @@ function addMsg(who, text, imgUrl) {
   log.scrollTop = log.scrollHeight;
   return b;
 }
-
 function greet() {
   const n = readNb();
   const hi = n.nickname
-    ? `Hi ${n.nickname}! 🐧 Good to see you again.` + (n.next ? `\n\nLast time I wrote down: start with **${n.next}**. Want to do that, or is there new homework?` : `\n\nWhat are we working on today?`)
-    : `Hi! I'm Piper, a penguin who is bad at flying but pretty good at fractions. 🐧\n\nBefore we do any math, I'd love to get to know you a little. What should I call you? A first name or nickname is perfect.`;
-  addMsg("piper", hi + (n.nickname ? `\n\nTip: tap **📷 Photo** to send me a picture of the problem, and your work too. Mistakes are my favorite snack.` : ""));
+    ? `Hi ${n.nickname}! It's so good to see you again.` + (n.next ? `\n\nLast time I wrote down: start with **${n.next}**. Want to do that, or is there new homework?` : `\n\nWhat are we working on today?`)
+    : `Hi there! I'm Piper. I love math, I lose my glasses on top of my head about twice a day, and I'm really glad you're here.\n\nBefore we do any math, I'd love to get to know you a little. What should I call you? A first name or nickname is perfect.`;
+  addMsg("piper", hi + (n.nickname ? `\n\nTip: tap **📷 Photo** or **📱 Phone photo** to show me the problem and your work. I love seeing your thinking, mistakes included.` : ""));
   turns.push({ role: "assistant", content: hi });
+  setMood("hello", 3200);
 }
 
 const ERR = {
   not_granted: "Piper needs permission to use Claude. Reload the page and choose Allow when asked.",
-  rate_limited: "Piper needs a short rest. Wait a minute, then send again.",
+  rate_limited: "Piper needs a short pause. Wait a minute, then send again.",
   image_rejected: "Piper couldn't open that photo. Try a JPG or PNG, or take it again.",
   images_unavailable: "Photos can't be sent from this view. Type the problem instead.",
   prompt_too_large: "This chat got very long. Tap New problem to start fresh.",
   refused: "Let's stick to math. What problem are you working on?",
 };
 function errText(e) { return ERR[e && e.code] || "Something went wrong reaching Claude. Try sending again."; }
+const FEELING_WORDS = /\b(hate|dumb|stupid|can'?t|cannot|idk|ugh|give up|frustrat\w*|confus\w*|hard|break|sad|worried|scared|nervous|anxious|cry|tired|annoyed|boring)\b/i;
 
 async function ask(userText) {
   if (busy) return;
   if (!sample) { $("offline").hidden = false; return; }
   busy = true; sendBtn.disabled = true;
-  const sentPhoto = photo, sentUrl = photoUrl && turns.every(t => !t._img || t._img !== photoUrl) ? photoUrl : null;
+  const sentPhoto = photo, sentUrl = photoUrl && turns.every(t => t._img !== photoUrl) ? photoUrl : null;
   addMsg("kid", userText, sentUrl);
   turns.push({ role: "user", content: userText + (sentUrl ? "\n[I attached a photo.]" : ""), _img: sentUrl || undefined });
+  const upset = FEELING_WORDS.test(userText);
+  setMood(upset ? "empathy" : "thinking");
+  if (upset) sfx("soft");
   const bubble = addMsg("piper", "");
-  bubble.innerHTML = '<p class="thinking">Piper is thinking... 🐟</p>';
+  bubble.innerHTML = '<p class="thinking">Piper is thinking...</p>';
   const recent = turns.slice(-24).map(({ role, content }) => ({ role, content }));
   const header = { role: "user", content: RULES + "\n\nMODE: " + (intake ? "GET TO KNOW YOU" : "TUTORING") + "\n\nPIPER'S NOTEBOOK (what you remember about this learner):\n" + nbText() + "\n\n" + (sentPhoto ? "A photo of the current problem is attached." : "No photo attached right now.") + "\n\nThe conversation follows. Reply as Piper to the last message." };
   try {
-    const opts = { cache: false, onText: ({ text }) => { showPiper(bubble, text, false); log.scrollTop = log.scrollHeight; } };
+    const opts = { cache: false, onText: ({ text }) => {
+      const r = showPiper(bubble, text, false);
+      if (r.mood && svgEl.dataset.mood !== r.mood && MOODS.has(r.mood)) setMood(r.mood);
+      setTalking(true); clearTimeout(streamStop);
+      streamStop = setTimeout(() => { if (!speakingNow) setTalking(false); }, 450);
+      log.scrollTop = log.scrollHeight;
+    } };
     if (sentPhoto && imgLimits) opts.images = [sentPhoto];
     const { text } = await sample([header, ...recent], opts);
     const r = showPiper(bubble, text, true);
     turns.push({ role: "assistant", content: text });
     if (r.voice) setTalk(r.voice === "on");
-    if (r.wins.length) addWins(r.wins);
+    if (r.wins.length) { addWins(r.wins); setMood("celebrate", 4500); sfx("win"); }
+    else { setMood(r.mood || "calm", ["celebrate", "surprised", "happy"].includes(r.mood) ? 4500 : 0); sfx(r.mood === "celebrate" ? "win" : "pop"); }
     if (autoTalk) speak(r.text, bubble.parentElement);
     if (r.done && intake) { intake = false; updateNotebook(true); }
   } catch (e) {
-    bubble.innerHTML = render((e && e.text ? e.text + "\n\n" : "") + errText(e));
+    bubble.innerHTML = render((e && e.text ? parseReply(e.text).text + "\n\n" : "") + errText(e));
+    setMood("empathy", 3000);
   } finally {
-    busy = false; sendBtn.disabled = false; box.focus();
+    busy = false; sendBtn.disabled = false;
+    if (!speakingNow) setTalking(false);
   }
 }
 
@@ -398,46 +666,164 @@ $("sendForm").addEventListener("submit", (ev) => {
   ask(t || "Here is my photo.");
 });
 box.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); $("sendForm").requestSubmit(); } });
+box.addEventListener("input", () => { if (!busy && svgEl.dataset.mood !== "listening" && box.value.trim()) setMood("listening", 6000); });
 $("chips").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-say]"); if (b) ask(b.dataset.say); });
 
+/* ---------- Photos on this device ---------- */
+function setPhoto(blob, label) {
+  photo = blob;
+  if (photoUrl) URL.revokeObjectURL(photoUrl);
+  photoUrl = URL.createObjectURL(blob);
+  $("attachPreview").src = photoUrl;
+  $("attachName").textContent = label;
+  $("attachRow").hidden = false;
+}
 $("photo").addEventListener("change", () => {
   const f = $("photo").files[0];
+  $("photo").value = "";
   if (!f) return;
   if (imgLimits && f.size > imgLimits.maxInputBytes) { $("attachName").textContent = "That photo is too big. Try a smaller one."; $("attachRow").hidden = false; return; }
-  photo = f; if (photoUrl) URL.revokeObjectURL(photoUrl); photoUrl = URL.createObjectURL(f);
-  $("attachPreview").src = photoUrl; $("attachName").textContent = "Photo ready. Piper will keep it for this problem.";
-  $("attachRow").hidden = false;
-  $("photo").value = "";
+  setPhoto(f, "Photo ready. Piper will keep it for this problem.");
+  setMood("surprised", 2500);
 });
 function clearPhoto() { photo = null; if (photoUrl) URL.revokeObjectURL(photoUrl); photoUrl = null; $("attachRow").hidden = true; }
 $("removePhoto").onclick = clearPhoto;
 $("newProblem").onclick = () => {
   clearPhoto();
-  const keep = turns.slice(-4);
-  turns = keep;
-  addMsg("piper", "Fresh ice, new problem! ❄️ Send a photo or type it out.");
-  turns.push({ role: "assistant", content: "Fresh ice, new problem! Send a photo or type it out." });
+  turns = turns.slice(-4);
+  const t = "Fresh page, new problem! Send a photo or type it out.";
+  addMsg("piper", t);
+  turns.push({ role: "assistant", content: t });
+  setMood("happy", 2500);
 };
 $("bigText").onclick = () => {
   const on = document.body.classList.toggle("big");
   $("bigText").setAttribute("aria-pressed", String(on));
   store("piper-big", on ? "1" : "0");
 };
+$("helpBtn").onclick = () => {
+  const p = $("helpPanel"), open = p.hidden;
+  p.hidden = !open; $("helpBtn").setAttribute("aria-expanded", String(open));
+};
+$("micBtn").onclick = () => {
+  const tip = $("talkTip"), open = tip.hidden;
+  tip.hidden = !open; $("micBtn").setAttribute("aria-expanded", String(open));
+  box.focus();
+};
 
-// Notebook memory: private per signed-in person in the artifact's database, with this browser as a backup.
+/* ---------- Phone photo handoff (private to the signed-in account) ---------- */
+const handoffDoc = () => db && userId ? db.doc("data/users/" + userId + "/handoff") : null;
+const PHONE_URL = APP_URL + "#phone";
+$("phoneLink").textContent = PHONE_URL;
+function drawQr() {
+  const el = $("qr");
+  if (el.dataset.done) return;
+  try {
+    const q = qrcode(0, "M"); q.addData(PHONE_URL); q.make();
+    el.innerHTML = q.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
+    el.dataset.done = "1";
+  } catch (e) {
+    el.innerHTML = '<p class="hint">The QR code could not load. Type the link below on the phone instead.</p>';
+  }
+}
+$("phoneBtn").onclick = () => {
+  const p = $("phonePanel"), open = p.hidden;
+  p.hidden = !open; $("phoneBtn").setAttribute("aria-expanded", String(open));
+  if (open) {
+    drawQr();
+    $("phoneStatus").textContent = handoffDoc() ? "Waiting for a photo from your phone..." : "Phone photos need this page open on claude.ai while signed in.";
+    $("phoneStatus").className = "status";
+  }
+};
+$("closePhone").onclick = () => { $("phonePanel").hidden = true; $("phoneBtn").setAttribute("aria-expanded", "false"); };
+$("copyLink").onclick = () => {
+  navigator.clipboard.writeText(PHONE_URL).then(() => { $("phoneStatus").textContent = "Link copied."; }, () => {
+    const r = document.createRange(); r.selectNodeContents($("phoneLink")); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    $("phoneStatus").textContent = "Link selected. Copy it with your keyboard.";
+  });
+};
+function dataUrlToBlob(u) {
+  const [head, b64] = u.split(",");
+  const mime = (head.match(/:(.*?);/) || [, "image/jpeg"])[1];
+  const bin = atob(b64), arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+let lastPhotoTs = Number(load("piper-lastphoto") || 0);
+function listenForPhone() {
+  const d = handoffDoc();
+  if (!d) return;
+  d.onSnapshot((snap) => {
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    if (!data.img || !data.ts || data.ts <= lastPhotoTs) return;
+    lastPhotoTs = data.ts; store("piper-lastphoto", String(data.ts));
+    if (Date.now() - data.ts > 15 * 60 * 1000) return;
+    try { setPhoto(dataUrlToBlob(data.img), "Photo from your phone. Piper has it."); } catch (e) { return; }
+    $("phonePanel").hidden = true; $("phoneBtn").setAttribute("aria-expanded", "false");
+    setMood("surprised", 2500); sfx("photo");
+    setTimeout(() => { d.delete().catch(() => {}); }, 0);
+    if (!busy && sample) ask("I just sent a photo from my phone.");
+  }, () => {});
+}
+
+/* ---------- Phone view ---------- */
+let phoneShot = null;
+async function compress(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    let max = 1600, q = .82, out = "";
+    for (let k = 0; k < 10; k++) {
+      const sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+      const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      out = c.toDataURL("image/jpeg", q);
+      if (out.length < 235000) return out;
+      if (q > .56) q -= .08; else max = Math.round(max * .82);
+    }
+    return out.length < 250000 ? out : null;
+  } finally { URL.revokeObjectURL(url); }
+}
+async function pickPhone(input) {
+  const f = input.files[0]; input.value = "";
+  if (!f) return;
+  $("pStatus").textContent = "Getting the photo ready..."; $("pStatus").className = "status";
+  try {
+    phoneShot = await compress(f);
+    if (!phoneShot) throw new Error("too big");
+    $("pPrev").src = phoneShot; $("pPrev").hidden = false;
+    $("pSend").disabled = false;
+    $("pStatus").textContent = "Looks good? Tap Send to Piper.";
+  } catch (e) { $("pStatus").textContent = "That photo didn't work. Try taking it again."; }
+}
+$("pCam").addEventListener("change", () => pickPhone($("pCam")));
+$("pPick").addEventListener("change", () => pickPhone($("pPick")));
+$("pSend").onclick = async () => {
+  const d = handoffDoc();
+  if (!d) { $("pStatus").textContent = "Sign in to claude.ai on this phone with the same account as the big screen, then reload this page."; return; }
+  $("pSend").disabled = true; $("pStatus").textContent = "Sending...";
+  try {
+    await d.set({ img: phoneShot, ts: Date.now() });
+    $("pStatus").textContent = "Sent! Look at the other screen. You can send another one anytime."; $("pStatus").className = "status ok";
+    $("pPrev").hidden = true; phoneShot = null; sfx("photo");
+  } catch (e) {
+    $("pStatus").textContent = "It didn't send. Check you're signed in with the same account, then try again."; $("pSend").disabled = false;
+  }
+};
+
+/* ---------- Notebook memory ---------- */
 const nbDoc = () => db && userId ? db.doc("data/users/" + userId + "/notebook") : null;
 async function saveNb(msg) {
   const data = { ...readNb(), updated: new Date().toISOString().slice(0, 10) };
   store("piper-notebook", JSON.stringify(data));
   const st = $("nbStatus");
   try {
-    const d = nbDoc();
-    if (!d) throw new Error("no db");
+    const d = nbDoc(); if (!d) throw new Error("no db");
     await d.set(data);
     st.textContent = msg || "Saved. Piper will remember next time."; st.className = "status ok";
-  } catch (e) {
-    st.textContent = "Saved in this browser only. Sign in on claude.ai to keep it everywhere."; st.className = "status";
-  }
+  } catch (e) { st.textContent = "Saved in this browser only. Sign in on claude.ai to keep it everywhere."; st.className = "status"; }
 }
 $("saveNb").onclick = () => saveNb();
 function addWins(ws) {
@@ -453,7 +839,7 @@ async function updateNotebook(auto) {
   if (!sample) { $("offline").hidden = false; return; }
   if (turns.filter(t => t.role === "user").length < 2) { st.textContent = "Chat with Piper a bit first, then update."; st.className = "status"; return; }
   st.textContent = "Piper is writing in the notebook..."; st.className = "status";
-  const chat = turns.slice(-30).map(t => (t.role === "user" ? "Learner: " : "Piper: ") + t.content).join("\n");
+  const chat = turns.slice(-30).map(t => (t.role === "user" ? "Learner: " : "Piper: ") + parseReply(t.content).text).join("\n");
   try {
     const out = await sample.json(`You maintain a short learner profile for a middle school math tutor named Piper. Update it from today's session.
 Rules: keep it short (each field under 160 characters). Never include last names, school names, diagnoses or medical details; write only what helps ("likes number lines"). Move a topic to "mastered" only if the learner solved two varied problems without hints. Make "tricky" specific misconceptions. Keep "helps" from the current profile unless the session clearly shows something new that helped. Keep "nickname" and "grade" unless the learner gave new ones. "feelings" records how math feels and any change over time (for example "started: hard; today: kind of OK"). "wins" keeps every existing win and adds new ones, one per line, newest last, at most 8.
@@ -469,16 +855,17 @@ Reply with only a JSON object with these string keys: nickname, grade, helps, in
   } catch (e) { st.textContent = errText(e); st.className = "status"; }
 }
 $("redoIntro").onclick = () => {
-  intake = true;
-  turns = [];
-  const hi = "Let's get to know each other again! 🐧 Tell me a bit about how you're doing with math these days. First, what should I call you now?";
-  addMsg("piper", hi);
-  turns.push({ role: "assistant", content: hi });
+  intake = true; turns = [];
+  const hi = "Let's get to know each other again! Tell me how things are going with math these days. First, what should I call you now?";
+  addMsg("piper", hi); turns.push({ role: "assistant", content: hi });
+  setMood("curious", 3000);
 };
 
-// Voice: the device's own speech engine, ranked so the most natural voice wins.
+/* ---------- Voice ---------- */
 let voices = [], voice = null, rate = 0.95, autoTalk = false;
 const ROBOTIC = /Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Good News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Junior|Ralph|Fred|Kathy|Grandma|Grandpa|Eddy|Flo|Reed|Rocko|Sandy|Shelley|espeak/i;
+const WOMEN = /Aria|Jenny|Samantha|Ava|Emma|Zoe|Michelle|Ana\b|Sonia|Libby|Natasha|Clara|Allison|Susan|Joanna|Salli|Karen|Moira|Tessa|Fiona|Serena|Victoria|Nicky|Google US English|Female/i;
+const MEN = /Guy|Andrew|Brian|Evan|Nathan|Daniel|Alex\b|Tom\b|Aaron|Arthur|Oliver|Ryan|Christopher|Eric|Roger|Steffan|Male/i;
 function scoreVoice(v) {
   if (!/^en/i.test(v.lang)) return -1;
   let s = 10;
@@ -486,20 +873,19 @@ function scoreVoice(v) {
   if (/premium|enhanced|siri/i.test(v.name)) s += 6;
   if (/online/i.test(v.name)) s += 3;
   if (/google/i.test(v.name)) s += 3;
-  if (/Samantha|Ava|Aria|Jenny|Emma|Andrew|Brian|Zoe|Evan|Nathan|Michelle|Ana/i.test(v.name)) s += 2;
+  if (WOMEN.test(v.name)) s += 4;
+  if (MEN.test(v.name)) s -= 3;
   if (/en[-_]US/i.test(v.lang)) s += 1;
   if (ROBOTIC.test(v.name)) s -= 20;
   return s;
 }
 function loadVoices() {
-  if (!("speechSynthesis" in window)) return;
   const all = speechSynthesis.getVoices();
   voices = all.filter(v => scoreVoice(v) > 0).sort((a, b) => scoreVoice(b) - scoreVoice(a));
   const sel = $("voiceSel");
   sel.innerHTML = "";
   voices.forEach((v, i) => { const o = document.createElement("option"); o.value = String(i); o.textContent = v.name.replace(/^Microsoft\s+/, "") + " (" + v.lang + ")"; sel.append(o); });
-  const saved = load("piper-voice");
-  const idx = Math.max(0, voices.findIndex(v => v.name === saved));
+  const idx = Math.max(0, voices.findIndex(v => v.name === load("piper-voice")));
   voice = voices[idx] || null;
   sel.value = String(idx);
 }
@@ -525,16 +911,19 @@ function speak(text, wrap) {
     speechSynthesis.cancel();
     document.querySelectorAll(".msg.speaking").forEach(m => m.classList.remove("speaking"));
     const parts = forSpeech(text).split(/(?<=[.!?])\s+|\n+/).map(x => x.trim()).filter(Boolean);
+    if (!parts.length) return;
+    speakingNow = true; setTalking(true);
+    if (wrap) wrap.classList.add("speaking");
     parts.forEach((p, i) => {
       const u = new SpeechSynthesisUtterance(p);
       if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = "en-US";
       u.rate = rate; u.pitch = 1.05;
-      if (i === 0 && wrap) u.onstart = () => wrap.classList.add("speaking");
-      if (i === parts.length - 1 && wrap) u.onend = u.onerror = () => wrap.classList.remove("speaking");
+      if (i === parts.length - 1) u.onend = u.onerror = () => { speakingNow = false; setTalking(false); if (wrap) wrap.classList.remove("speaking"); };
       speechSynthesis.speak(u);
     });
-  } catch (e) {}
+  } catch (e) { speakingNow = false; setTalking(false); }
 }
+setInterval(() => { if (speakingNow && "speechSynthesis" in window && !speechSynthesis.speaking && !speechSynthesis.pending) { speakingNow = false; setTalking(false); document.querySelectorAll(".msg.speaking").forEach(m => m.classList.remove("speaking")); } }, 700);
 function setTalk(on) {
   autoTalk = on;
   $("talkMode").setAttribute("aria-pressed", String(on));
@@ -544,13 +933,7 @@ function setTalk(on) {
 $("talkMode").onclick = () => setTalk(!autoTalk);
 $("voiceSel").onchange = () => { voice = voices[+$("voiceSel").value] || null; if (voice) store("piper-voice", voice.name); };
 $("voiceRate").oninput = () => { rate = +$("voiceRate").value; store("piper-rate", String(rate)); };
-$("testVoice").onclick = () => speak("Hi! I'm Piper. Three fourths of a pizza is a lot of pizza, even for a penguin.", null);
-$("micBtn").onclick = () => {
-  const tip = $("talkTip"), open = tip.hidden;
-  tip.hidden = !open;
-  $("micBtn").setAttribute("aria-expanded", String(open));
-  box.focus();
-};
+$("testVoice").onclick = () => { speak("Hi! I'm Piper. Three fourths of a pizza is a lot of pizza, even for me.", null); setMood("happy", 3000); };
 if ("speechSynthesis" in window) {
   loadVoices();
   try { speechSynthesis.addEventListener("voiceschanged", loadVoices); } catch (e) {}
@@ -561,26 +944,34 @@ if ("speechSynthesis" in window) {
   $("talkTip").textContent = "To talk to Piper, use the microphone on your keyboard to dictate, then press Send.";
 }
 
-// Boot: render from the browser copy right away, then light up Claude and the database.
-try { const local = JSON.parse(load("piper-notebook") || "null"); fillNb(local); } catch (e) {}
-if (load("piper-big") === "1") { document.body.classList.add("big"); $("bigText").setAttribute("aria-pressed", "true"); }
-if (window.matchMedia("(max-width: 860px)").matches && readNb().nickname) $("nbDetails").open = false;
-intake = !readNb().nickname;
-greet();
-
+/* ---------- Boot ---------- */
+if (PHONE) {
+  $("appView").hidden = true; $("phoneView").hidden = false;
+} else {
+  try { fillNb(JSON.parse(load("piper-notebook") || "null")); } catch (e) {}
+  if (load("piper-big") === "1") { document.body.classList.add("big"); $("bigText").setAttribute("aria-pressed", "true"); }
+  if (window.matchMedia("(max-width: 880px)").matches && readNb().nickname) $("nbDetails").open = false;
+  intake = !readNb().nickname;
+  greet();
+}
 (async () => {
-  if (!window.claude || !window.claude.use) { $("offline").hidden = false; return; }
+  if (!window.claude || !window.claude.use) { if (!PHONE) $("offline").hidden = false; return; }
   const [s, d, u] = await Promise.all([claude.use("sample"), claude.use("db"), claude.use("user")]);
+  db = d;
+  userId = u ? await u.id().catch(() => null) : null;
+  if (PHONE) {
+    if (!handoffDoc()) $("pStatus").textContent = "Sign in to claude.ai on this phone with the same account as the big screen, then reload.";
+    return;
+  }
   sample = s;
   if (!sample) $("offline").hidden = false;
   else {
     const lim = await sample.limits().catch(() => null);
     imgLimits = lim && lim.images ? lim.images : null;
     if (imgLimits) $("photo").accept = imgLimits.mediaTypes.join(",");
-    else $("photoLabel").hidden = true;
+    else { $("photoLabel").hidden = true; $("phoneBtn").hidden = true; }
   }
-  db = d;
-  userId = u ? await u.id().catch(() => null) : null;
+  listenForPhone();
   const doc = nbDoc();
   if (doc) {
     try {
