@@ -37,3 +37,8 @@ dist/piper-math-tutor.zip                upload-ready skill package
 
 ## Important
 Claude's consumer plans require users to be 18 or older, so Piper runs on an adult's claude.ai account with that adult nearby. Keep the notebook and photos free of full names, diagnoses and school details.
+
+---
+
+## O.T.T.E.R. (separate project)
+An executive assistant for BMCC Community Education and Workforce Training lives in [`otter/`](otter/README.md). App: https://claude.ai/artifact/SHhkRdugADnMJQPGC99rhD (private). Capabilities and limits: [otter/CAPABILITIES.md](otter/CAPABILITIES.md).

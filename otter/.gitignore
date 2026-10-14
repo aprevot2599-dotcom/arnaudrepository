@@ -1,0 +1,7 @@
+node_modules/
+.env
+data/local/
+# Generated from your local SKILL.md files; this repository is public, so these stay local.
+data/skills.json
+dist/
+tests/screenshots/

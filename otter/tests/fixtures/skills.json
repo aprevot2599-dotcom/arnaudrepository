@@ -1,0 +1,9 @@
+{
+  "generatedAt": "fixture",
+  "skills": [
+    { "name": "board-report", "description": "Generate a monthly board report document from center updates.", "summary": "Fixture entry.", "bmcc": true, "systems": [], "sensitivity": [], "capabilities": ["generate documents"], "needsBrowser": false, "overlap": [] },
+    { "name": "course-request-form-filler", "description": "Fill a course request web form from notes and stop before Next.", "summary": "Fixture entry.", "bmcc": true, "systems": ["chrome", "google_forms"], "sensitivity": [], "capabilities": ["fill forms (stops before submit)"], "needsBrowser": true, "overlap": [] },
+    { "name": "synergy-parent-notification", "description": "Prepare parent notices about failing students from a student information system.", "summary": "Fixture entry.", "bmcc": true, "systems": ["chrome", "synergy"], "sensitivity": ["ferpa_student_records"], "capabilities": ["draft communications"], "needsBrowser": true, "overlap": [] },
+    { "name": "deep-research", "description": "Multi-source research synthesized into a report.", "summary": "Fixture entry.", "bmcc": false, "systems": ["web_research"], "sensitivity": [], "capabilities": ["research public sources"], "needsBrowser": false, "overlap": [] }
+  ]
+}

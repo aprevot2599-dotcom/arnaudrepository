@@ -1,0 +1,984 @@
+// O.T.T.E.R. application shell: wires the security core, the conversation engine, local
+// storage and the interface together. The approval panel in this file is the only place
+// that calls gate.approve() and gate.execute(), and only from a click.
+import { mountOtter, STATES } from "./otter.js";
+import { renderMarkdown, esc } from "./markdown.js";
+import { Store } from "./store.js";
+import { PermissionRegistry, ApprovalGate, AuditLog, SYSTEMS, ACTION_TYPES, describeProposalStatus, skillStatus, newId } from "../core/security.js";
+import { scanSensitive, redact, redactForLog, detectInjection } from "../core/privacy.js";
+import { runTurn, artifactTransport, serverTransport, offlineTransport } from "../core/agent.js";
+
+const $ = (id) => document.getElementById(id);
+const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+const fmtDate = (ts) => new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+const fmtTime = (ts) => new Date(ts).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+// ---------- state ----------
+let storage = null;
+try { storage = window.localStorage; } catch { storage = null; }
+const store = new Store(storage).load();
+const D = store.data;
+const audit = new AuditLog(D.audit, { redact: redactForLog });
+D.audit = audit.entries;
+audit.listeners.add(() => store.save());
+const permissions = new PermissionRegistry(D.permissions, { audit });
+const savePerms = () => { D.permissions = permissions.toJSON(); store.save(); };
+
+const executors = {
+  save_knowledge: async (run, p) => {
+    D.knowledge.push({ id: newId("kb"), title: run.target, text: run.content, provenance: `Approved from "${convById(p.conversationId)?.title || "a conversation"}"`, createdAt: Date.now(), updatedAt: Date.now(), expiresAt: null });
+    store.save();
+    return { ok: true, message: "Saved to the O.T.T.E.R. knowledge base on this device." };
+  },
+  create_task: async (run) => {
+    D.tasks.push({ id: newId("task"), title: run.target, detail: run.content, done: false, createdAt: Date.now() });
+    store.save();
+    return { ok: true, message: "Added to your task list." };
+  },
+};
+const gate = new ApprovalGate({ permissions, audit, executors, proposals: D.proposals });
+gate.listeners.add(() => { D.proposals = gate.list(); store.save(); renderCounts(); renderDashboard(); refreshProposalCards(); if (currentView === "tasks") renderTasks(); });
+
+let registry = [];
+let engine = { kind: "offline", transport: offlineTransport, label: "Connecting…", detail: "" };
+let current = null;
+let busy = null; // AbortController while a turn runs
+let currentView = "chat";
+const otter = mountOtter($("otter"));
+
+// ---------- helpers ----------
+function toast(msg, ms = 2600) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => (t.hidden = true), ms);
+}
+async function copyText(text, el) {
+  try { await navigator.clipboard.writeText(text); toast("Copied"); }
+  catch {
+    if (el) { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("Selected. Press Ctrl+C or Cmd+C to copy."); }
+    else toast("Copy is blocked here. Select the text and copy it yourself.");
+  }
+}
+const convById = (id) => D.conversations.find((c) => c.id === id);
+const service = () => engine.transport.service;
+
+function openModal(node, { onClose } = {}) {
+  const root = $("modalRoot"), m = $("modal");
+  m.replaceChildren(node);
+  root.hidden = false;
+  const close = () => { root.hidden = true; m.replaceChildren(); document.removeEventListener("keydown", esc_); onClose?.(); };
+  const esc_ = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", esc_);
+  root.querySelector(".modal-scrim").onclick = close;
+  (m.querySelector("[data-autofocus]") || m.querySelector("input,textarea,select,button"))?.focus();
+  return close;
+}
+function confirmBox(title, body, okLabel = "Confirm", danger = false) {
+  return new Promise((resolve) => {
+    const n = h(`<div><h2 id="modalTitle">${esc(title)}</h2><p>${esc(body)}</p><div class="actions"><button type="button" class="btn" data-no data-autofocus>Keep it</button><button type="button" class="btn ${danger ? "btn-bad" : "btn-primary"}" data-yes>${esc(okLabel)}</button></div></div>`);
+    let done = false;
+    const close = openModal(n, { onClose: () => !done && resolve(false) });
+    n.querySelector("[data-no]").onclick = () => { done = true; close(); resolve(false); };
+    n.querySelector("[data-yes]").onclick = () => { done = true; close(); resolve(true); };
+  });
+}
+function promptBox(title, label, value = "") {
+  return new Promise((resolve) => {
+    const n = h(`<form><h2 id="modalTitle">${esc(title)}</h2><label class="field"><span>${esc(label)}</span><input id="promptVal" type="text" value="${esc(value)}" data-autofocus></label><div class="actions"><button type="button" class="btn" data-no>Cancel</button><button class="btn btn-primary">Save</button></div></form>`);
+    let done = false;
+    const close = openModal(n, { onClose: () => !done && resolve(null) });
+    n.querySelector("[data-no]").onclick = () => { done = true; close(); resolve(null); };
+    n.onsubmit = (e) => { e.preventDefault(); done = true; const v = n.querySelector("#promptVal").value.trim(); close(); resolve(v); };
+  });
+}
+
+// ---------- avatar & activity ----------
+const GENERIC_LINES = ["Checking the evidence…", "Sorting through the details…", "Looking for the missing piece…", "Following the paper trail…", "Reviewing the executive implications…", "No guessing. Checking.", "This may require a bigger calculator."];
+const TOOL_LINES = {
+  search_knowledge: "Checking the knowledge base…",
+  analyze_email: "Reading the thread you attached…",
+  find_discrepancies: "These numbers deserve another look.",
+  get_skill: "Consulting your skill registry…",
+  record_finding: "Writing it down, with the evidence…",
+  propose_action: "Preparing something for your approval…",
+  web_search: "Searching public sources…",
+};
+let lineTimer = null, idleTimer = null;
+function setActivity(state, tool) {
+  clearTimeout(idleTimer);
+  const caption = otter.set(state);
+  $("otterCaption").textContent = caption;
+  if (busy) {
+    $("thinkingText").textContent = TOOL_LINES[tool] || $("thinkingText").textContent;
+    clearInterval(lineTimer);
+    lineTimer = setInterval(() => { $("thinkingText").textContent = GENERIC_LINES[Math.floor(Math.random() * GENERIC_LINES.length)]; }, 4200);
+  }
+  if (state === "done") idleTimer = setTimeout(() => setActivity("idle"), 2800);
+}
+
+// ---------- engine ----------
+async function detectEngine() {
+  const token = document.querySelector('meta[name="otter-token"]')?.content;
+  if (token) {
+    try {
+      const r = await fetch("/api/capabilities", { headers: { "x-otter-token": token } });
+      if (r.ok) {
+        const cap = await r.json();
+        if (cap.apiKey) return { kind: "server", transport: serverTransport({ token }), label: `Claude API · ${cap.model}`, detail: "Local server on this computer with your API key. Web research available when you allow it.", cap, token };
+        return { kind: "offline", transport: offlineTransport, label: "Built-in analyzers only", detail: "The local server is running without an ANTHROPIC_API_KEY. Set one and restart to enable Claude.", cap, token };
+      }
+    } catch {}
+  }
+  if (window.claude?.use) {
+    const sample = await window.claude.use("sample").catch(() => null);
+    if (sample) return { kind: "artifact", transport: artifactTransport(sample), label: "Claude via claude.ai", detail: "Uses your claude.ai account inside this private artifact. No web access in this mode." };
+  }
+  return { kind: "offline", transport: offlineTransport, label: "Built-in analyzers only", detail: "No Claude connection found. Open the claude.ai link or run the local server with an API key." };
+}
+
+function serviceApproved() {
+  const s = service();
+  return !s || (D.settings.approvedServices.includes(s) && permissions.check(s, "read"));
+}
+function approveService() {
+  const s = service();
+  if (!s) return;
+  if (!D.settings.approvedServices.includes(s)) D.settings.approvedServices.push(s);
+  permissions.grant(s, "read", { purpose: "Non-protected BMCC work content, confirmed by Dr. Prevot" });
+  savePerms();
+  renderEngine();
+}
+function revokeService(s) {
+  D.settings.approvedServices = D.settings.approvedServices.filter((x) => x !== s);
+  permissions.revoke(s);
+  savePerms();
+  renderEngine();
+}
+
+function renderEngine() {
+  const pill = $("enginePill");
+  pill.textContent = engine.label + (engine.kind !== "offline" && !serviceApproved() ? " · not approved yet" : "");
+  pill.classList.toggle("off", engine.kind === "offline" || !serviceApproved());
+  pill.title = engine.detail;
+  const pp = $("privacyPill");
+  pp.hidden = false;
+  pp.textContent = store.available ? "Stored on this device only" : "Storage unavailable: nothing is saved";
+}
+
+// ---------- conversations ----------
+function newConversation() {
+  current = { id: newId("c"), title: "New conversation", createdAt: Date.now(), updatedAt: Date.now(), messages: [], sourceIds: [], pinned: false, projectId: null };
+  renderConversation();
+  renderHistory();
+  showView("chat");
+  $("input").focus();
+}
+function ensureSaved() {
+  if (!D.conversations.includes(current)) D.conversations.unshift(current);
+}
+function autoTitle(text) {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (t.length <= 56) return t;
+  const cut = t.slice(0, 56);
+  return cut.slice(0, cut.lastIndexOf(" ") > 30 ? cut.lastIndexOf(" ") : 56) + "…";
+}
+function openConversation(id) {
+  const c = convById(id);
+  if (!c) return;
+  current = c;
+  renderConversation();
+  renderHistory();
+  showView("chat");
+  closeSideOnNarrow();
+}
+
+// ---------- history (incremental rendering for long lists) ----------
+const PAGE = 80;
+let historyLimit = PAGE;
+function historyItems() {
+  const q = $("searchChats").value.trim().toLowerCase();
+  let list = D.conversations;
+  if (q) list = list.filter((c) => c.title.toLowerCase().includes(q) || c.messages.some((m) => (m.content || "").toLowerCase().includes(q)));
+  return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+function dateGroup(ts) {
+  const d = new Date(ts), now = new Date();
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = (day(now) - day(d)) / 86400000;
+  if (diff < 1) return "Today";
+  if (diff < 2) return "Yesterday";
+  if (diff < 7) return "Previous 7 days";
+  if (diff < 30) return "Previous 30 days";
+  return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+function renderHistory() {
+  const el = $("history");
+  const items = historyItems();
+  const pinned = items.filter((c) => c.pinned);
+  const rest = items.filter((c) => !c.pinned).slice(0, historyLimit);
+  const byProject = $("groupBy").value === "project";
+  const frag = document.createDocumentFragment();
+  const item = (c) => {
+    const b = h(`<button class="hist-item${current && c.id === current.id ? " active" : ""}" role="listitem" title="${esc(c.title)}">${c.pinned ? '<span class="pin" aria-label="Pinned">&#9733;</span>' : ""}<span class="t">${esc(c.title)}</span></button>`);
+    b.onclick = () => openConversation(c.id);
+    return b;
+  };
+  if (pinned.length) { frag.append(h(`<div class="hist-group">Pinned</div>`)); pinned.forEach((c) => frag.append(item(c))); }
+  let last = null;
+  for (const c of rest) {
+    const g = byProject ? (D.projects.find((p) => p.id === c.projectId)?.name || "No project") : dateGroup(c.updatedAt);
+    if (g !== last) { frag.append(h(`<div class="hist-group">${esc(g)}</div>`)); last = g; }
+    frag.append(item(c));
+  }
+  if (!items.length) frag.append(h(`<div class="dempty" style="padding:8px">${$("searchChats").value ? "No chats match." : "Conversations you start appear here."}</div>`));
+  const more = items.filter((c) => !c.pinned).length > historyLimit;
+  if (more) {
+    const s = h(`<div class="hist-more"></div>`);
+    frag.append(s);
+    new IntersectionObserver((entries, obs) => { if (entries.some((e) => e.isIntersecting)) { obs.disconnect(); historyLimit += PAGE; renderHistory(); } }, { root: el }).observe(s);
+  }
+  el.replaceChildren(frag);
+}
+
+// ---------- messages ----------
+function renderConversation() {
+  $("convTitle").textContent = current.title;
+  const box = $("messages");
+  box.replaceChildren();
+  if (!current.messages.length) box.append(emptyState());
+  for (const m of current.messages) box.append(messageNode(m));
+  renderSourceTray();
+  box.scrollTop = current.messages.length ? box.scrollHeight : 0;
+}
+
+function emptyState() {
+  const starters = [
+    ["Decision", "Should BMCC launch a short-term CDL or welding certificate in the West End? Give me the decision frame and what evidence we need."],
+    ["Email", "Summarize the attached thread: deadlines (explicit vs inferred), what I've committed to, and what others owe me."],
+    ["Discrepancy", "Compare the attached budget and the grant narrative. Do the numbers agree?"],
+    ["Triage", "Here's what's on my plate this week. Sort it by consequence and tell me what to drop."],
+  ];
+  const n = h(`<div class="empty-chat"><h2>What needs attention?</h2><p class="lead">Ask a question, describe a decision, or add an email or document you're authorized to analyze. O.T.T.E.R. coordinates your ${registry.length || ""} discovered Claude skills and proposes actions for your approval; it never sends anything itself.</p><div class="starter-grid"></div></div>`);
+  const g = n.querySelector(".starter-grid");
+  for (const [k, t] of starters) {
+    const b = h(`<button class="starter"><b>${k}</b>${esc(t)}</button>`);
+    b.onclick = () => { $("input").value = t; autosize(); $("input").focus(); };
+    g.append(b);
+  }
+  return n;
+}
+
+function planNode(plan, skillsUsed = []) {
+  if (!plan?.steps?.length) return null;
+  const counts = plan.steps.reduce((a, s) => ((a[s.mode] = (a[s.mode] || 0) + 1), a), {});
+  const sum = Object.entries(counts).map(([k, v]) => `${v} ${k === "analysis" ? "in-app" : k}`).join(", ");
+  const n = h(`<details class="plan"><summary>Skill plan: ${plan.steps.length} skill${plan.steps.length > 1 ? "s" : ""} (${esc(sum)})${skillsUsed.length ? " · consulted: " + esc(skillsUsed.join(", ")) : ""}</summary><ul></ul></details>`);
+  for (const s of plan.steps) n.querySelector("ul").append(h(`<li><span class="mode mode-${s.mode}">${s.mode === "analysis" ? "in-app" : s.mode}</span> <span class="skill-name">${esc(s.name)}</span>: ${esc(s.role)}${s.mode !== "analysis" ? ` <span class="hint">${esc(s.reason)}</span>` : ""}</li>`));
+  return n;
+}
+
+function proposalCard(id) {
+  const p = gate.get(id);
+  if (!p) return h(`<div class="proposal"><span class="hint">Proposal no longer stored.</span></div>`);
+  const st = describeProposalStatus(p);
+  const n = h(`<div class="proposal" data-proposal="${p.id}"><div class="p-head"><span class="p-title">${esc(p.label)}</span><span class="status status-${p.status}">${esc(st.label)}</span></div><div class="p-target">Target: ${esc(p.target)}</div><div><button type="button" class="btn">${p.status === "pending" ? "Review and decide" : "View details"}</button></div></div>`);
+  n.querySelector("button").onclick = () => openApproval(p.id);
+  return n;
+}
+function refreshProposalCards() {
+  document.querySelectorAll("[data-proposal]").forEach((el) => el.replaceWith(proposalCard(el.dataset.proposal)));
+}
+
+function messageNode(m) {
+  const isUser = m.role === "user";
+  const n = h(`<article class="msg msg-${m.role}" data-msg="${m.id}"><div class="msg-meta"><span class="who">${isUser ? "You" : "O.T.T.E.R."}</span><span>${fmtTime(m.ts)}</span></div></article>`);
+  if (!isUser) { const p = planNode(m.plan, m.skillsUsed); if (p) n.append(p); }
+  if (m.notice) n.append(h(`<div class="notice ${m.notice.kind || ""}">${esc(m.notice.text)}</div>`));
+  const bubble = h(`<div class="bubble"></div>`);
+  if (isUser) bubble.textContent = m.content;
+  else bubble.innerHTML = renderMarkdown(m.content || "");
+  if (m.content || isUser) n.append(bubble);
+  if (!isUser && (m.content || "").length > 2600) {
+    bubble.classList.add("collapsed");
+  }
+  for (const id of m.proposalIds || []) n.append(proposalCard(id));
+  if (m.citations?.length) {
+    const c = h(`<div class="cites"><b>Sources</b><ol></ol></div>`);
+    for (const s of m.citations) c.querySelector("ol").append(h(`<li><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a>${s.pageAge ? ` <span class="hint">(${esc(s.pageAge)})</span>` : ' <span class="hint">(date not given)</span>'}</li>`));
+    n.append(c);
+  }
+  if (!isUser && m.content) {
+    const tools = h(`<div class="msg-tools"><button type="button" data-copy>Copy</button>${bubble.classList.contains("collapsed") ? '<button type="button" data-expand>Show all</button>' : ""}</div>`);
+    tools.querySelector("[data-copy]").onclick = () => copyText(m.content, bubble);
+    const ex = tools.querySelector("[data-expand]");
+    if (ex) ex.onclick = () => { const c = bubble.classList.toggle("collapsed"); ex.textContent = c ? "Show all" : "Collapse"; };
+    n.append(tools);
+  }
+  return n;
+}
+
+// ---------- sources ----------
+function renderSourceTray() {
+  const tray = $("sourceTray");
+  tray.replaceChildren();
+  for (const id of current.sourceIds) {
+    const s = D.sources[id];
+    if (!s) continue;
+    const c = h(`<span class="chip" title="${esc(s.kind)} added ${fmtDate(s.addedAt)}"><span class="k">${esc(s.id)}</span><span class="t">${esc(s.title)}</span><button type="button" aria-label="Remove ${esc(s.title)}">&times;</button></span>`);
+    c.querySelector("button").onclick = () => { current.sourceIds = current.sourceIds.filter((x) => x !== id); delete D.sources[id]; store.save(); renderSourceTray(); };
+    tray.append(c);
+  }
+}
+
+function openSourceModal(prefill = {}) {
+  const n = h(`<form class="approval">
+    <h2 id="modalTitle">Add an authorized source</h2>
+    <p class="hint">Paste or upload an email thread or document you are allowed to analyze. O.T.T.E.R. does not read your mailbox or any system directly; it only sees what you add here. Content stays on this device until you send a message, and the privacy guard checks it first.</p>
+    <div class="grid-2">
+      <label class="field"><span>Type</span><select id="srcKind"><option value="email">Email thread</option><option value="document">Document or spreadsheet text</option><option value="web">Web page text</option><option value="notes">Notes</option></select></label>
+      <label class="field"><span>Title</span><input id="srcTitle" type="text" placeholder="e.g. Welding cohort budget thread"></label>
+    </div>
+    <label class="field"><span>Content</span><textarea id="srcText" placeholder="Paste here, including From:, Date: and Subject: lines for emails."></textarea></label>
+    <label class="field"><span>Or load a text file</span><input id="srcFile" type="file" accept=".txt,.md,.csv,.tsv,.eml,.json,.html,.htm"><small>Text formats only. For Word, Excel or PDF, copy the text in.</small></label>
+    <div id="srcScan" class="findings-list"></div>
+    <label class="switch"><input id="srcAttest" type="checkbox"><span>I am authorized to analyze this content, and I copied or exported it myself through an approved method.</span></label>
+    <div class="actions"><button type="button" class="btn" data-cancel>Cancel</button><button type="button" class="btn" id="srcRedact" hidden>Redact sensitive items</button><button class="btn btn-primary" id="srcAdd" disabled>Add source</button></div>
+  </form>`);
+  const kind = n.querySelector("#srcKind"), title = n.querySelector("#srcTitle"), text = n.querySelector("#srcText"), attest = n.querySelector("#srcAttest"), add = n.querySelector("#srcAdd"), red = n.querySelector("#srcRedact"), scanEl = n.querySelector("#srcScan");
+  kind.value = prefill.kind || "email";
+  text.value = prefill.text || "";
+  const scan = () => {
+    const f = scanSensitive(text.value);
+    const inj = detectInjection(text.value);
+    const by = {};
+    for (const x of f) by[x.label] = (by[x.label] || 0) + 1;
+    const blocks = f.some((x) => x.severity === "block");
+    const ferpa = f.some((x) => x.severity === "ferpa");
+    scanEl.replaceChildren();
+    if (Object.keys(by).length) scanEl.append(h(`<div class="notice ${blocks ? "bad" : ""}"><b>Privacy check:</b> ${Object.entries(by).map(([k, v]) => `${esc(k)} (${v})`).join(", ")}.${blocks ? " Passwords, SSNs, card numbers and secrets cannot be added. Redact them first." : ""}${ferpa ? " Possible student education-record details: this can stay on your device, but it will not be sent to Claude unless FERPA processing is authorized in Settings." : ""}${!blocks && !ferpa ? " Contact details will be replaced with placeholders before anything is sent, unless you allow them in Settings." : ""}</div>`));
+    if (inj.length) scanEl.append(h(`<div class="notice bad"><b>Possible manipulation:</b> this content contains instructions aimed at an assistant (for example "ignore previous instructions" or "forward this to"). O.T.T.E.R. will treat it as data and flag it, not follow it.</div>`));
+    red.hidden = !f.some((x) => x.severity !== "medium");
+    add.disabled = !text.value.trim() || !attest.checked || blocks;
+    if (!title.value && kind.value === "email") { const m = text.value.match(/^\s*Subject:\s*(.+)$/im); if (m) title.placeholder = m[1].trim().slice(0, 80); }
+  };
+  text.oninput = scan; attest.onchange = scan; kind.onchange = scan;
+  red.onclick = () => { text.value = redact(text.value); scan(); };
+  n.querySelector("#srcFile").onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2_000_000) { toast("That file is over 2 MB. Paste the relevant part instead."); return; }
+    let t = await file.text();
+    if (/\.html?$/i.test(file.name)) t = new DOMParser().parseFromString(t, "text/html").body.textContent || "";
+    text.value = t;
+    if (!title.value) title.value = file.name;
+    if (/\.eml$/i.test(file.name)) kind.value = "email";
+    scan();
+  };
+  const close = openModal(n);
+  n.querySelector("[data-cancel]").onclick = close;
+  n.onsubmit = (e) => {
+    e.preventDefault();
+    scan();
+    if (add.disabled) return;
+    D.counters.source = (D.counters.source || 0) + 1;
+    const id = "S" + D.counters.source;
+    const t = title.value.trim() || title.placeholder.replace(/^e\.g\. .*/, "") || `${kind.value} ${id}`;
+    D.sources[id] = { id, kind: kind.value, title: t, text: text.value, addedAt: Date.now(), attested: true, injection: detectInjection(text.value).length > 0 };
+    ensureSaved();
+    current.sourceIds.push(id);
+    current.updatedAt = Date.now();
+    audit.record("source.added", { id, kind: kind.value });
+    store.save();
+    close();
+    renderSourceTray();
+    renderHistory();
+    if (!current.messages.length) renderConversation();
+    toast(`Added ${id}. Ask about it in your message.`);
+  };
+  scan();
+}
+
+// ---------- sending ----------
+function autosize() {
+  const el = $("input");
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 240) + "px";
+}
+
+async function send(text) {
+  text = text.trim();
+  if (!text || busy) return;
+  if (engine.kind !== "offline" && !serviceApproved()) { askServiceApproval(() => send(text)); return; }
+  ensureSaved();
+  if (!current.messages.length) current.title = autoTitle(text);
+  const userMsg = { id: newId("m"), role: "user", content: text, ts: Date.now() };
+  current.messages.push(userMsg);
+  current.updatedAt = Date.now();
+  $("input").value = "";
+  autosize();
+  if (current.messages.length === 1) $("messages").replaceChildren();
+  $("messages").append(messageNode(userMsg));
+  $("convTitle").textContent = current.title;
+  renderHistory();
+
+  const reply = { id: newId("m"), role: "assistant", content: "", ts: Date.now(), proposalIds: [] };
+  const live = h(`<article class="msg msg-assistant"><div class="msg-meta"><span class="who">O.T.T.E.R.</span><span>${fmtTime(reply.ts)}</span></div><div class="bubble"></div></article>`);
+  $("messages").append(live);
+  const scroll = () => { const b = $("messages"); if (b.scrollHeight - b.scrollTop - b.clientHeight < 160) b.scrollTop = b.scrollHeight; };
+  scroll();
+
+  busy = new AbortController();
+  $("thinkingLine").hidden = false;
+  $("sendBtn").disabled = true;
+  $("thinkingText").textContent = GENERIC_LINES[0];
+  setActivity("thinking");
+
+  let foundDiscrepancy = false, foundOpportunity = false;
+  const usedSkills = new Set();
+  const ctx = {
+    gate, permissions, registry, settings: D.settings, knowledge: D.knowledge, projects: D.projects,
+    rawSources: current.sourceIds.map((id) => D.sources[id]).filter(Boolean),
+    usedSkills,
+    addFinding: (f) => {
+      const saved = { ...f, id: newId("f"), createdAt: Date.now(), conversationId: current.id, evidence: f.evidence.map((e) => ({ ...e, sourceTitle: e.sourceId ? D.sources[e.sourceId]?.title || e.sourceId : e.title })) };
+      D.findings.unshift(saved);
+      if (["discrepancy", "conflicting_evidence"].includes(f.kind)) foundDiscrepancy = true;
+      if (f.kind === "opportunity") foundOpportunity = true;
+      store.save();
+      renderDashboard();
+      return saved;
+    },
+    onActivity: (state, tool) => setActivity(state, tool),
+    onProposal: (p) => { p.conversationId = current.id; reply.proposalIds.push(p.id); live.append(proposalCard(p.id)); scroll(); },
+    getSkillInstructions: engine.kind === "server" ? async (name) => {
+      const r = await fetch(`/api/skills/${encodeURIComponent(name)}/instructions`, { headers: { "x-otter-token": engine.token } });
+      return r.ok ? (await r.json()).instructions : null;
+    } : null,
+  };
+  const history = current.messages.slice(0, -1).filter((m) => m.content && (m.role === "user" || m.role === "assistant")).slice(-16).map((m) => ({ role: m.role, content: m.content }));
+  const bubble = live.querySelector(".bubble");
+  let final = "done";
+  try {
+    const res = await runTurn({ transport: engine.transport, ctx, userText: text, history, signal: busy.signal, onText: (t) => { bubble.innerHTML = renderMarkdown(t); scroll(); } });
+    reply.plan = res.plan;
+    reply.skillsUsed = [...usedSkills];
+    if (res.blocked) {
+      reply.notice = { kind: "bad", text: "Privacy guard: " + res.privacy.reason + " Nothing was sent." };
+      final = "privacy";
+    } else {
+      reply.content = res.text || "";
+      reply.citations = res.citations || [];
+      if (res.privacy?.redacted) reply.notice = { kind: "info", text: "Identifying details were replaced with placeholders before this was sent." };
+      if (res.truncated) reply.content += "\n\n_The answer was cut short. Ask for the rest._";
+      if (reply.proposalIds.some((id) => gate.get(id)?.status === "pending")) final = "awaiting_approval";
+      else if (foundDiscrepancy) final = "discrepancy";
+      else if (foundOpportunity) final = "opportunity";
+    }
+  } catch (e) {
+    const code = e.code || "";
+    if (code === "cancelled" || e.name === "AbortError") { reply.content = (e.text || bubble.textContent || "").trim(); reply.notice = { kind: "info", text: "Stopped. Nothing else ran." }; final = "idle"; }
+    else if (code === "not_authorized") { reply.notice = { kind: "bad", text: "Locked door. I'll wait for authorization. " + e.message }; final = "locked"; }
+    else if (code === "not_granted" || code === "sampling_disabled") { reply.notice = { kind: "bad", text: "Claude access was declined for this page, so I can't answer with Claude. Reload and choose Allow, or keep using the built-in analyzers." }; final = "locked"; engine = { kind: "offline", transport: offlineTransport, label: "Built-in analyzers only", detail: "Claude access was declined." }; renderEngine(); }
+    else if (code === "rate_limited") { reply.notice = { kind: "bad", text: "Claude usage limit or rate limit reached. Try again in a little while; nothing was retried automatically." }; final = "error"; }
+    else { reply.content = (e.text || "").trim(); reply.notice = { kind: "bad", text: "That didn't work: " + (e.message || "unknown error") + (e.text ? " The partial answer is kept above." : "") }; final = "error"; }
+  } finally {
+    busy = null;
+    clearInterval(lineTimer);
+    $("thinkingLine").hidden = true;
+    $("sendBtn").disabled = false;
+  }
+  current.messages.push(reply);
+  current.updatedAt = Date.now();
+  store.save();
+  live.replaceWith(messageNode(reply));
+  scroll();
+  setActivity(final);
+  renderDashboard();
+}
+
+function askServiceApproval(then) {
+  const label = SYSTEMS[service()]?.label || service();
+  const n = h(`<div><h2 id="modalTitle">Approve the AI service first</h2>
+    <p>O.T.T.E.R. will send your messages and the sources attached to this conversation to <b>${esc(label)}</b>. Before that happens, confirm that BMCC permits using it for <b>non-protected</b> work content.</p>
+    <p class="hint">The privacy guard still blocks passwords, SSNs and card numbers, blocks student education-record details unless FERPA processing is authorized, and replaces contact details with placeholders. You can revoke this any time in Settings.</p>
+    <div class="actions"><button type="button" class="btn" data-no data-autofocus>Not now</button><button type="button" class="btn btn-primary" data-yes>BMCC permits it: approve</button></div></div>`);
+  const close = openModal(n);
+  n.querySelector("[data-no]").onclick = () => { close(); setActivity("locked"); toast("Locked door. I'll wait for authorization."); };
+  n.querySelector("[data-yes]").onclick = () => { approveService(); close(); then?.(); };
+}
+
+// ---------- approval panel ----------
+function openApproval(id) {
+  const p = gate.get(id);
+  if (!p) return;
+  const st = describeProposalStatus(p);
+  const sys = SYSTEMS[p.system]?.label || p.system;
+  const shownDigest = p.digest;
+  const n = h(`<div class="approval">
+    <h2 id="modalTitle">${p.status === "pending" ? "Approval needed" : "Proposed action"}</h2>
+    <span class="status status-${p.status}" style="justify-self:start">${esc(st.label)}</span>
+    ${p.untrustedContext ? `<div class="notice">This was proposed while analyzing outside content (emails, documents or web pages). Outside content can try to trick assistants. Check the target and content carefully.</div>` : ""}
+    <dl>
+      <dt>Action</dt><dd>${esc(p.label)} <span class="hint">via ${esc(sys)}${p.external ? ", leaves O.T.T.E.R." : ", local to O.T.T.E.R."}</span></dd>
+      <dt>Target</dt><dd>${esc(p.target)}</dd>
+      <dt>Content</dt><dd><div class="content-box">${esc(p.content)}</div></dd>
+      <dt>Consequences</dt><dd>${esc(p.consequences)}</dd>
+      <dt>Approval</dt><dd>${p.status === "pending" ? "Explicit authorization from you, for this exact action and content only." : p.approval ? `Approved ${fmtDate(p.approval.at)} ${fmtTime(p.approval.at)}` : "Not approved"}<div class="digest">Fingerprint ${esc(shownDigest.slice(0, 16))}</div></dd>
+      ${p.result ? `<dt>Result</dt><dd>${esc(p.result.message || (p.result.ok ? "Done." : ""))}</dd>` : ""}
+    </dl>
+    <div class="actions"></div>
+  </div>`);
+  const actions = n.querySelector(".actions");
+  const close = openModal(n);
+  const btn = (label, cls, fn) => { const b = h(`<button type="button" class="btn ${cls}">${label}</button>`); b.onclick = fn; actions.append(b); return b; };
+  btn("Close", "", close).setAttribute("data-autofocus", "");
+  btn("Copy content", "btn-ghost", () => copyText(p.content, n.querySelector(".content-box")));
+  if (p.status === "pending") {
+    btn("Cancel action", "btn-bad", () => { gate.reject(p.id, { reason: "user cancelled" }); close(); toast("Cancelled. Nothing ran."); setActivity("idle"); });
+    btn("Revise", "", () => { close(); openRevise(p.id); });
+    const ok = btn("Approve", "btn-ok", async () => {
+      ok.disabled = true;
+      try {
+        gate.approve(p.id, { confirmDigest: shownDigest });
+        const done = await gate.execute(p.id);
+        close();
+        openApproval(p.id);
+        if (done.status === "executed") { setActivity("done"); toast("That one's wrapped up. The paperwork survived."); }
+        else { setActivity(done.result?.code === "not_authorized" ? "locked" : "idle"); }
+      } catch (e) {
+        toast(e.message, 5000);
+        close();
+      }
+    });
+    // A short pause stops a stray Enter or double click from approving
+    ok.disabled = true;
+    setTimeout(() => (ok.disabled = false), 700);
+    setActivity("awaiting_approval");
+  }
+}
+
+function openRevise(id) {
+  const p = gate.get(id);
+  const n = h(`<form class="approval"><h2 id="modalTitle">Revise: ${esc(p.label)}</h2>
+    <p class="hint">Saving creates a new proposal. It still needs your approval; the old one can no longer run.</p>
+    <label class="field"><span>Target</span><input id="rvTarget" type="text" value="${esc(p.target)}"></label>
+    <label class="field"><span>Content</span><textarea id="rvContent">${esc(p.content)}</textarea></label>
+    <label class="field"><span>Consequences</span><input id="rvCons" type="text" value="${esc(p.consequences)}"></label>
+    <div class="actions"><button type="button" class="btn" data-cancel>Back</button><button class="btn btn-primary">Save revision</button></div></form>`);
+  const close = openModal(n);
+  n.querySelector("[data-cancel]").onclick = () => { close(); openApproval(id); };
+  n.onsubmit = async (e) => {
+    e.preventDefault();
+    const next = await gate.revise(id, { target: n.querySelector("#rvTarget").value, content: n.querySelector("#rvContent").value, consequences: n.querySelector("#rvCons").value });
+    next.conversationId = p.conversationId;
+    const conv = convById(p.conversationId);
+    const msg = conv?.messages.find((m) => (m.proposalIds || []).includes(id));
+    if (msg) msg.proposalIds.push(next.id);
+    store.save();
+    close();
+    if (current && conv === current) renderConversation();
+    openApproval(next.id);
+  };
+}
+
+// ---------- views ----------
+function showView(v) {
+  currentView = v;
+  document.querySelectorAll(".view").forEach((el) => el.classList.toggle("active", el.id === "view-" + v));
+  document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
+  if (v === "skills") renderSkills();
+  if (v === "projects") renderProjects();
+  if (v === "tasks") renderTasks();
+  if (v === "research") renderResearch();
+  if (v === "settings") renderSettings();
+  if (v !== "chat") $("convTitle").textContent = { skills: "Skill Registry", projects: "Projects", tasks: "Tasks and approvals", research: "Research", settings: "Settings" }[v];
+  else if (current) $("convTitle").textContent = current.title;
+  closeSideOnNarrow();
+}
+
+// Skill Registry
+const skillFilter = { q: "", bmcc: true, status: "all" };
+function renderSkills() {
+  const el = $("view-skills");
+  const rows = registry.map((s) => ({ s, st: skillStatus(s, { permissions, settings: D.settings }) }));
+  const counts = rows.reduce((a, r) => ((a[r.st.status] = (a[r.st.status] || 0) + 1), a), {});
+  const page = h(`<div class="page">
+    <div><h2>Skill Registry</h2><p class="lead">${registry.length} Claude skills discovered on disk${D.skillsGeneratedAt ? "" : ""}. Dependencies and sensitivity are inferred from each SKILL.md and decide what O.T.T.E.R. may do with a skill. In-app skills inform answers here; hand-off skills run in Claude in Chrome or the desktop app after you approve a brief; restricted skills stay off until you authorize their data.</p></div>
+    <div class="toolbar"><input type="search" id="skillQ" placeholder="Search skills" value="${esc(skillFilter.q)}"><div class="chipset" id="skillChips"></div></div>
+    <div class="table-wrap"><table class="data-table skills-table"><thead><tr><th>Skill</th><th>Purpose</th><th class="hide-narrow">Capabilities</th><th class="hide-narrow">Dependencies</th><th class="hide-narrow">Permissions</th><th>Status</th><th class="hide-narrow">Overlap</th></tr></thead><tbody></tbody></table></div>
+  </div>`);
+  const chips = page.querySelector("#skillChips");
+  const chip = (label, pressed, fn) => { const b = h(`<button type="button" class="fchip" aria-pressed="${pressed}">${label}</button>`); b.onclick = fn; chips.append(b); };
+  chip("BMCC only", skillFilter.bmcc, () => { skillFilter.bmcc = !skillFilter.bmcc; renderSkills(); });
+  for (const s of ["all", "available", "handoff", "unavailable", "restricted", "disabled"]) chip(`${s === "all" ? "All" : s} ${s === "all" ? registry.length : counts[s] || 0}`, skillFilter.status === s, () => { skillFilter.status = s; renderSkills(); });
+  const tb = page.querySelector("tbody");
+  const q = skillFilter.q.toLowerCase();
+  for (const { s, st } of rows) {
+    if (skillFilter.bmcc && !s.bmcc) continue;
+    if (skillFilter.status !== "all" && st.status !== skillFilter.status) continue;
+    if (q && !(s.name + " " + s.description).toLowerCase().includes(q)) continue;
+    const perms = (s.systems || []).map((x) => `<span class="tag">${esc(SYSTEMS[x]?.label?.split(" (")[0] || x)}: ${permissions.scope(x)}</span>`).join("") || '<span class="hint">none</span>';
+    const tr = h(`<tr class="expandable"><td><div class="skill-name">${esc(s.name)}</div>${s.bmcc ? '<span class="tag">BMCC</span>' : ""}</td><td>${esc(s.description.slice(0, 180))}${s.description.length > 180 ? "…" : ""}</td><td class="hide-narrow">${(s.capabilities || []).map((c) => `<span class="tag">${esc(c)}</span>`).join("") || '<span class="hint">see purpose</span>'}</td><td class="hide-narrow">${(s.systems || []).map((x) => `<span class="tag">${esc(x)}</span>`).join("") || '<span class="hint">none detected</span>'}${(s.sensitivity || []).map((x) => `<span class="tag sens">${esc(x.replace(/_/g, " "))}</span>`).join("")}</td><td class="hide-narrow">${perms}</td><td><span class="st st-${st.status}">${st.status}</span></td><td class="hide-narrow">${(s.overlap || []).slice(0, 4).map((o) => `<span class="tag">${esc(o)}</span>`).join("")}</td></tr>`);
+    const detail = h(`<tr hidden><td colspan="7"><div class="card"><div><b>Summary.</b> ${esc(s.summary || s.description)}</div><div><b>Status.</b> ${esc(st.reason)}</div><div class="hint">Location: ${esc(s.location || "")} · ${s.stopsBeforeSubmit ? "Instructions say it stops before submit buttons." : "No stop-before-submit rule detected."}</div><label class="switch"><input type="checkbox" ${D.settings.disabledSkills.includes(s.name) ? "checked" : ""}><span>Disable this skill in O.T.T.E.R.</span></label></div></td></tr>`);
+    detail.querySelector("input").onchange = (e) => {
+      D.settings.disabledSkills = e.target.checked ? [...new Set([...D.settings.disabledSkills, s.name])] : D.settings.disabledSkills.filter((x) => x !== s.name);
+      audit.record(e.target.checked ? "skill.disabled" : "skill.enabled", { skill: s.name });
+      store.save();
+      renderSkills();
+      renderDashboard();
+    };
+    tr.onclick = () => (detail.hidden = !detail.hidden);
+    tb.append(tr, detail);
+  }
+  if (!tb.children.length) tb.append(h(`<tr><td colspan="7" class="hint">No skills match.</td></tr>`));
+  el.replaceChildren(page);
+  const qi = page.querySelector("#skillQ");
+  qi.oninput = () => { skillFilter.q = qi.value; const pos = qi.selectionStart; renderSkills(); const n = $("skillQ"); n.focus(); n.setSelectionRange(pos, pos); };
+}
+
+// Projects
+function renderProjects() {
+  const el = $("view-projects");
+  const page = h(`<div class="page"><div><h2>Projects</h2><p class="lead">Your active initiatives. O.T.T.E.R. includes them as context in every answer and groups conversations under them. Only what you enter here is used.</p></div>
+    <form class="card" id="projForm"><div class="grid-2"><label class="field"><span>Project name</span><input id="pName" type="text" required placeholder="e.g. Boardman CDL cohort"></label><label class="field"><span>Priority</span><select id="pPri"><option>high</option><option selected>normal</option><option>low</option></select></label></div><label class="field"><span>Notes, milestones, open questions</span><textarea id="pNotes" rows="2"></textarea></label><div class="actions"><button class="btn btn-primary">Add project</button></div></form>
+    <div id="projList" class="grid-2"></div></div>`);
+  page.querySelector("#projForm").onsubmit = (e) => {
+    e.preventDefault();
+    D.projects.push({ id: newId("p"), name: page.querySelector("#pName").value.trim(), priority: page.querySelector("#pPri").value, status: "active", notes: page.querySelector("#pNotes").value.trim(), createdAt: Date.now() });
+    store.save(); renderProjects(); renderDashboard();
+  };
+  const list = page.querySelector("#projList");
+  for (const p of D.projects) {
+    const convs = D.conversations.filter((c) => c.projectId === p.id).length;
+    const c = h(`<div class="card"><div class="row" style="display:flex;gap:8px;align-items:center"><h3 style="flex:1;margin:0">${esc(p.name)}</h3><span class="tag">${convs} chat${convs === 1 ? "" : "s"}</span></div>
+      <div class="grid-2" style="gap:8px"><label class="field"><span>Priority</span><select data-k="priority"><option ${p.priority === "high" ? "selected" : ""}>high</option><option ${p.priority === "normal" ? "selected" : ""}>normal</option><option ${p.priority === "low" ? "selected" : ""}>low</option></select></label><label class="field"><span>Status</span><select data-k="status">${["active", "on hold", "at risk", "complete"].map((s) => `<option ${p.status === s ? "selected" : ""}>${s}</option>`).join("")}</select></label></div>
+      <label class="field"><span>Notes</span><textarea data-k="notes" rows="3">${esc(p.notes || "")}</textarea></label>
+      <div><button type="button" class="link-btn danger">Delete project</button></div></div>`);
+    c.querySelectorAll("[data-k]").forEach((inp) => (inp.onchange = () => { p[inp.dataset.k] = inp.value; store.save(); renderDashboard(); }));
+    c.querySelector(".danger").onclick = async () => { if (await confirmBox("Delete project?", `"${p.name}" will be removed. Its conversations stay, without a project.`, "Delete", true)) { D.projects = D.projects.filter((x) => x !== p); D.conversations.forEach((cv) => cv.projectId === p.id && (cv.projectId = null)); store.save(); renderProjects(); renderDashboard(); } };
+    list.append(c);
+  }
+  if (!D.projects.length) list.append(h(`<p class="hint">No projects yet. Add your current priorities so recommendations account for them.</p>`));
+  el.replaceChildren(page);
+}
+
+// Tasks and approvals
+function renderTasks() {
+  const el = $("view-tasks");
+  const all = gate.list().sort((a, b) => b.createdAt - a.createdAt);
+  const pending = all.filter((p) => p.status === "pending");
+  const page = h(`<div class="page"><div><h2>Tasks and approvals</h2><p class="lead">Everything O.T.T.E.R. proposed and what you decided. Only actions you approve run, and only through an integration you have authorized. Most external ones have none yet, so approval gives you the final text to use yourself.</p></div>
+    <div class="card"><h3>Waiting for your approval (${pending.length})</h3><div id="pend" class="findings-list"></div></div>
+    <div class="card"><h3>Task list</h3><form id="taskForm" class="toolbar"><input id="taskTitle" class="inline-input" style="flex:1" placeholder="Add a task" required><button class="btn">Add</button></form><div id="taskList" class="findings-list"></div></div>
+    <div class="card"><h3>Approval history</h3><div id="histList" class="findings-list"></div></div></div>`);
+  const pend = page.querySelector("#pend");
+  pending.forEach((p) => pend.append(proposalCard(p.id)));
+  if (!pending.length) pend.append(h(`<p class="dempty">Nothing is waiting on you.</p>`));
+  page.querySelector("#taskForm").onsubmit = (e) => { e.preventDefault(); D.tasks.push({ id: newId("task"), title: page.querySelector("#taskTitle").value.trim(), detail: "", done: false, createdAt: Date.now() }); store.save(); renderTasks(); renderDashboard(); };
+  const tl = page.querySelector("#taskList");
+  for (const t of D.tasks) {
+    const r = h(`<label class="switch"><input type="checkbox" ${t.done ? "checked" : ""}><span>${t.done ? `<s>${esc(t.title)}</s>` : esc(t.title)}${t.detail ? ` <span class="hint">${esc(t.detail.slice(0, 160))}</span>` : ""}</span></label>`);
+    r.querySelector("input").onchange = (e) => { t.done = e.target.checked; store.save(); renderTasks(); renderDashboard(); };
+    tl.append(r);
+  }
+  if (!D.tasks.length) tl.append(h(`<p class="dempty">No tasks. Approved "add task" proposals land here too.</p>`));
+  const hl = page.querySelector("#histList");
+  all.filter((p) => p.status !== "pending").slice(0, 60).forEach((p) => hl.append(proposalCard(p.id)));
+  if (!hl.children.length) hl.append(h(`<p class="dempty">No decisions yet.</p>`));
+  el.replaceChildren(page);
+}
+
+// Research
+function renderResearch() {
+  const el = $("view-research");
+  const research = D.findings.filter((f) => f.kind === "research" || f.kind === "opportunity");
+  const cites = [];
+  for (const c of D.conversations) for (const m of c.messages) for (const s of m.citations || []) cites.push({ ...s, conv: c, ts: m.ts });
+  const page = h(`<div class="page"><div><h2>Research</h2><p class="lead">Source-backed research findings and every web source Claude cited, with the conversation it came from. ${engine.kind === "server" ? (permissions.check("web_research", "read") ? "Web research is on." : "Web research is available but off; allow it in Settings > Permissions.") : "Web research needs the local server with an API key; the claude.ai version has no web access and will not invent sources."}</p></div>
+    <div class="card"><h3>Findings</h3><div id="rf" class="findings-list"></div></div><div class="card"><h3>Cited sources</h3><div id="rc" class="findings-list"></div></div></div>`);
+  const rf = page.querySelector("#rf");
+  research.forEach((f) => rf.append(findingNode(f)));
+  if (!research.length) rf.append(h(`<p class="dempty">No research findings recorded yet. Nothing is shown until there is a verifiable source.</p>`));
+  const rc = page.querySelector("#rc");
+  cites.sort((a, b) => b.ts - a.ts).slice(0, 200).forEach((s) => { const n = h(`<div class="ditem"><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a><span class="hint">${s.pageAge ? esc(s.pageAge) + " · " : ""}cited ${fmtDate(s.ts)} in <button type="button" class="link-btn">${esc(s.conv.title)}</button></span></div>`); n.querySelector("button").onclick = () => openConversation(s.conv.id); rc.append(n); });
+  if (!cites.length) rc.append(h(`<p class="dempty">No web sources cited yet.</p>`));
+  el.replaceChildren(page);
+}
+
+// Settings
+function renderSettings() {
+  const el = $("view-settings");
+  const S = D.settings;
+  const svc = service();
+  const page = h(`<div class="page">
+    <div><h2>Settings</h2><p class="lead">Permissions are off until you turn them on. Everything here is stored on this device.</p></div>
+    <div class="grid-2">
+      <div class="card"><h3>Engine</h3><div><b>${esc(engine.label)}</b></div><p class="hint" style="margin:0">${esc(engine.detail)}</p>
+        ${svc ? `<label class="switch"><input id="svcOk" type="checkbox" ${serviceApproved() ? "checked" : ""}><span>BMCC permits sending non-protected work content to ${esc(SYSTEMS[svc].label)}.</span></label>` : ""}
+        <p class="hint" style="margin:0">Outlook and Claude in Chrome: no supported bridge exists from this app, so neither is connected. Add emails with <b>+ Add source</b> (paste or file). Skills that need Chrome are handed off with an approved brief.</p>
+        <button type="button" class="btn" id="rerunOnboard">Run setup questions again</button></div>
+      <div class="card"><h3>Privacy</h3>
+        <label class="switch"><input id="allowContact" type="checkbox" ${S.allowContactDetails ? "checked" : ""}><span>Allow work email addresses and phone numbers to be sent (otherwise replaced with placeholders).</span></label>
+        <label class="switch"><input id="ferpaOn" type="checkbox" ${S.ferpaAttested ? "checked" : ""}><span>Authorize processing of student education-record information.</span></label>
+        <div id="ferpaFields" ${S.ferpaAttested ? "" : "hidden"} class="grid-2" style="gap:8px"><label class="field"><span>Lawful basis (FERPA exception)</span><input id="ferpaBasis" type="text" value="${esc(S.ferpaBasis)}" placeholder="e.g. school official, legitimate educational interest"></label><label class="field"><span>Approved by (BMCC office or person)</span><input id="ferpaApprover" type="text" value="${esc(S.ferpaApprover)}"></label></div>
+        <p class="hint" style="margin:0">O.T.T.E.R. is not certified FERPA-compliant. Turning this on records your attestation; it does not establish compliance. Leave it off unless BMCC has approved this use in writing.</p></div>
+    </div>
+    <div class="card"><h3>Permissions</h3><p class="hint" style="margin:0">Each system is separate: Outlook access says nothing about SharePoint or Banner, and read never implies write. A signed-in browser does not count. Protected systems need a stated purpose. Note that no integration for these systems exists yet, so a grant today only lets plans and approvals reference them.</p><div id="permList"></div></div>
+    <div class="grid-2">
+      <div class="card"><h3>Personal</h3>
+        <label class="field"><span>Names and addresses that mean "me" in email threads</span><input id="myNames" type="text" value="${esc(S.myNames.join(", "))}"></label>
+        <label class="field"><span>Briefing format</span><input id="briefing" type="text" value="${esc(S.briefingFormat)}"></label>
+        <label class="field"><span>Theme</span><select id="themeSel"><option value="system">Match system</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+        <label class="switch"><input id="glasses" type="checkbox" ${S.glasses ? "checked" : ""}><span>Reading glasses on the otter</span></label>
+        <label class="switch"><input id="motion" type="checkbox" ${S.reduceMotion ? "checked" : ""}><span>Reduce motion</span></label></div>
+      <div class="card"><h3>Data</h3>
+        <label class="field"><span>Delete unpinned conversations after</span><select id="retention">${[[30, "30 days"], [90, "90 days"], [180, "180 days"], [365, "1 year"], [0, "Never"]].map(([v, l]) => `<option value="${v}" ${+S.retentionDays === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        <p class="hint" style="margin:0">${D.conversations.length} conversations, ${Object.keys(D.sources).length} sources, ${D.knowledge.length} knowledge entries, ${D.findings.length} findings on this device.</p>
+        <div class="toolbar"><button type="button" class="btn" id="exportAll">Copy full export (JSON)</button><button type="button" class="btn btn-bad" id="wipeAll">Delete all O.T.T.E.R. data</button></div>
+        <h3 style="margin-top:6px">Knowledge base</h3><div id="kbList" class="findings-list"></div></div>
+    </div>
+    <div class="card"><h3>Capability report</h3><div id="capReport"></div></div>
+    <div class="card"><h3>Audit log</h3><p class="hint" style="margin:0">What was proposed, approved, run, blocked or changed. Content is never logged; actions are identified by fingerprint.</p><div class="audit" id="auditLog"></div></div>
+  </div>`);
+  const $$ = (s) => page.querySelector(s);
+  if (svc) $$("#svcOk").onchange = (e) => (e.target.checked ? approveService() : revokeService(svc));
+  $$("#rerunOnboard").onclick = () => runOnboarding();
+  $$("#allowContact").onchange = (e) => { S.allowContactDetails = e.target.checked; audit.record("privacy.contact_details", { allowed: S.allowContactDetails }); store.save(); };
+  $$("#ferpaOn").onchange = (e) => { $$("#ferpaFields").hidden = !e.target.checked; if (!e.target.checked) { S.ferpaAttested = false; audit.record("privacy.ferpa", { attested: false }); store.save(); } else toast("Fill in the basis and approver to turn this on."); };
+  const ferpaSave = () => { const b = $$("#ferpaBasis").value.trim(), a = $$("#ferpaApprover").value.trim(); S.ferpaBasis = b; S.ferpaApprover = a; S.ferpaAttested = !!(b && a && $$("#ferpaOn").checked); audit.record("privacy.ferpa", { attested: S.ferpaAttested }); store.save(); };
+  $$("#ferpaBasis").onchange = ferpaSave; $$("#ferpaApprover").onchange = ferpaSave;
+  const pl = $$("#permList");
+  for (const [key, sys] of Object.entries(SYSTEMS)) {
+    if (["anthropic_api", "claude_ai", "local_knowledge"].includes(key)) continue;
+    const g = permissions.grants[key];
+    const row = h(`<div class="perm-row"><div><b>${esc(sys.label)}</b> ${sys.protected ? '<span class="lock">protected</span>' : ""}${g.purpose ? `<div class="hint">Purpose: ${esc(g.purpose)}</div>` : ""}</div><select aria-label="Access for ${esc(sys.label)}"><option value="none">No access</option><option value="read">Read</option><option value="write">Read and write</option></select><input class="purpose inline-input" type="text" placeholder="Purpose and scope (required to grant)" hidden></div>`);
+    const sel = row.querySelector("select"), pur = row.querySelector(".purpose");
+    sel.value = g.scope;
+    sel.onchange = () => {
+      if (sel.value === "none") { permissions.revoke(key); savePerms(); renderSettings(); return; }
+      if (sys.protected) { pur.hidden = false; pur.focus(); return; }
+      permissions.grant(key, sel.value, { purpose: "Enabled in Settings" }); savePerms(); renderSettings();
+    };
+    pur.onchange = () => {
+      try { permissions.grant(key, sel.value, { purpose: pur.value }); savePerms(); renderSettings(); } catch (e) { toast(e.message, 4000); }
+    };
+    pl.append(row);
+  }
+  $$("#myNames").onchange = (e) => { S.myNames = e.target.value.split(",").map((x) => x.trim()).filter(Boolean); store.save(); };
+  $$("#briefing").onchange = (e) => { S.briefingFormat = e.target.value; store.save(); };
+  $$("#themeSel").value = S.theme;
+  $$("#themeSel").onchange = (e) => { S.theme = e.target.value; applyPrefs(); store.save(); };
+  $$("#glasses").onchange = (e) => { S.glasses = e.target.checked; applyPrefs(); store.save(); };
+  $$("#motion").onchange = (e) => { S.reduceMotion = e.target.checked; applyPrefs(); store.save(); };
+  $$("#retention").onchange = (e) => { S.retentionDays = +e.target.value; const n = store.purgeExpired(); store.save(); renderHistory(); toast(n ? `Removed ${n} old conversation(s).` : "Retention updated."); };
+  $$("#exportAll").onclick = () => copyText(store.exportJSON());
+  $$("#wipeAll").onclick = async () => { if (await confirmBox("Delete everything?", "All conversations, sources, findings, knowledge, approvals, permissions and settings on this device will be erased. This cannot be undone.", "Delete all", true)) { store.wipe(); location.reload(); } };
+  const kb = $$("#kbList");
+  for (const k of D.knowledge) {
+    const n = h(`<div class="ditem"><div class="row"><b>${esc(k.title)}</b><button type="button" class="link-btn danger" style="margin-left:auto">Delete</button></div><span>${esc(k.text.slice(0, 220))}</span><span class="hint">${esc(k.provenance || "")} · ${fmtDate(k.createdAt)}</span></div>`);
+    n.querySelector("button").onclick = () => { D.knowledge = D.knowledge.filter((x) => x !== k); audit.record("knowledge.deleted", { id: k.id }); store.save(); renderSettings(); };
+    kb.append(n);
+  }
+  if (!D.knowledge.length) kb.append(h(`<p class="dempty">Empty. Facts are saved only when you approve a "save to knowledge base" proposal.</p>`));
+  $$("#capReport").innerHTML = capabilityReport();
+  $$("#auditLog").innerHTML = audit.entries.slice(-150).reverse().map((e) => `<div>${new Date(e.ts).toLocaleString()} · ${esc(e.event)} ${esc(Object.entries(e).filter(([k]) => !["ts", "event"].includes(k)).map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`).join(" "))}</div>`).join("") || '<div class="hint">No events yet.</div>';
+  el.replaceChildren(page);
+}
+
+function capabilityReport() {
+  const rows = [
+    ["Chat with Claude", engine.kind === "offline" ? "unavailable" : serviceApproved() ? "working" : "needs approval", engine.detail],
+    ["Web research with citations", engine.kind === "server" ? (permissions.check("web_research", "read") ? "working" : "needs permission") : "unavailable", engine.kind === "server" ? "Claude API web search tool." : "Needs the local server with an API key."],
+    ["Email analysis (paste or upload)", "working", "Deterministic parser always available; Claude adds summaries and drafts."],
+    ["Outlook direct access", "unavailable", "BMCC blocks the Microsoft 365 connector and no browser bridge exists for this app."],
+    ["Claude in Chrome bridge", "unavailable", "No supported interface for a web app to drive the extension; Chrome skills get approved hand-off briefs."],
+    ["Discrepancy detection", "working", "Built-in figure and totals checks plus Claude analysis with verified quotes."],
+    ["Skill registry and orchestration", registry.length ? "working" : "unavailable", `${registry.length} skills discovered; in-app skills inform answers, others are handed off or blocked.`],
+    ["Running skill scripts (docx, xlsx, forms)", "unavailable", "Scripts run inside Claude Code, Cowork or Claude in Chrome, not in this app."],
+    ["Approval gate and audit log", "working", "Enforced in code; 16 automated fail-safe tests."],
+    ["Sending, posting, submitting", "unavailable", "No external integration is authorized; approved items are handed to you to send."],
+    ["Persistent history and knowledge", store.available ? "working" : "unavailable", store.available ? "Browser storage on this device only." : "This browser blocked local storage."],
+  ];
+  const cls = { working: "st-available", "needs approval": "st-unavailable", "needs permission": "st-unavailable", unavailable: "st-restricted" };
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Capability</th><th>Status</th><th>Detail</th></tr></thead><tbody>${rows.map(([a, b, c]) => `<tr><td>${esc(a)}</td><td><span class="st ${cls[b]}">${esc(b)}</span></td><td>${esc(c)}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+// ---------- dashboard ----------
+function findingNode(f) {
+  const n = h(`<div class="ditem"><div class="row"><b>${esc(f.title)}</b><span class="conf conf-${f.confidence}">${f.confidence}</span>${f.deadline ? `<span class="tag">${esc(f.deadline)} (${esc(f.deadlineBasis || "?")})</span>` : ""}</div><span>${esc(f.finding)}</span>${(f.evidence || []).slice(0, 3).map((e) => `<span class="hint">${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener noreferrer">${esc(e.sourceTitle || e.url)}</a>` : esc(e.sourceTitle || e.sourceId)}: <q>${esc((e.quote || "").slice(0, 200))}</q></span>`).join("")}${f.impact ? `<span><b>Impact:</b> ${esc(f.impact)}</span>` : ""}${f.recommendation ? `<span><b>Recommendation:</b> ${esc(f.recommendation)}</span>` : ""}${f.nextStep ? `<span><b>Next step:</b> ${esc(f.nextStep)}</span>` : ""}<div class="row"><button type="button" class="link-btn" data-open>Open conversation</button><button type="button" class="link-btn" data-dismiss style="color:var(--muted)">Dismiss</button></div></div>`);
+  n.querySelector("[data-open]").onclick = () => openConversation(f.conversationId);
+  n.querySelector("[data-dismiss]").onclick = () => { D.findings = D.findings.filter((x) => x !== f); store.save(); renderDashboard(); if (currentView === "research") renderResearch(); };
+  return n;
+}
+
+function renderDashboard() {
+  if ($("dashboard").hidden) return;
+  const body = $("dashBody");
+  const sec = (title, count, nodes, emptyText, open = true) => {
+    const d = h(`<details class="dsec" ${open ? "open" : ""}><summary>${esc(title)}${count === null ? "" : `<span class="count ${count ? "warn" : ""}">${count}</span>`}</summary><div class="dlist"></div></details>`);
+    const l = d.querySelector(".dlist");
+    if (nodes.length) nodes.forEach((x) => l.append(x)); else l.append(h(`<p class="dempty">${esc(emptyText)}</p>`));
+    return d;
+  };
+  const pending = gate.list().filter((p) => p.status === "pending");
+  const disc = D.findings.filter((f) => ["discrepancy", "conflicting_evidence"].includes(f.kind));
+  const emailF = D.findings.filter((f) => ["action_item", "commitment", "decision"].includes(f.kind) || f.deadline);
+  const research = D.findings.filter((f) => ["research", "opportunity", "risk"].includes(f.kind));
+  const prio = [...D.projects.filter((p) => p.priority === "high" && p.status !== "complete").map((p) => h(`<div class="ditem"><b>${esc(p.name)}</b><span class="hint">${esc(p.status)} · high priority</span></div>`)), ...D.tasks.filter((t) => !t.done).slice(0, 6).map((t) => h(`<div class="ditem"><span>&#9744; ${esc(t.title)}</span></div>`))];
+  const skillRows = registry.filter((s) => s.bmcc).map((s) => skillStatus(s, { permissions, settings: D.settings }).status);
+  const sc = skillRows.reduce((a, s) => ((a[s] = (a[s] || 0) + 1), a), {});
+  const colors = { available: "var(--ok)", handoff: "var(--river)", unavailable: "var(--warn)", restricted: "var(--bad)", disabled: "var(--muted)" };
+  const meter = h(`<div class="ditem"><div class="meter">${Object.entries(sc).map(([k, v]) => `<i style="width:${(v / skillRows.length) * 100}%;background:${colors[k]}" title="${k}: ${v}"></i>`).join("")}</div><div class="row">${Object.entries(sc).map(([k, v]) => `<span class="st st-${k}">${k} ${v}</span>`).join("")}</div><button type="button" class="link-btn" style="justify-self:start">Open Skill Registry</button></div>`);
+  meter.querySelector("button").onclick = () => showView("skills");
+  const granted = Object.entries(SYSTEMS).filter(([k]) => permissions.scope(k) !== "none" && k !== "local_knowledge").map(([k, v]) => h(`<div class="ditem"><span>${esc(v.label)}: <b>${permissions.scope(k)}</b></span></div>`));
+  const recent = audit.entries.filter((e) => /^action\.(approved|rejected|result|blocked)/.test(e.event)).slice(-5).reverse().map((e) => h(`<div class="ditem"><span class="hint">${fmtDate(e.ts)} ${fmtTime(e.ts)} · ${esc(e.event.replace("action.", ""))} ${esc(e.type || "")} ${e.status ? "(" + esc(e.status) + ")" : ""}</span></div>`));
+  const security = [...(granted.length ? granted : [h(`<p class="dempty">No systems authorized beyond the local knowledge base.</p>`)]), ...recent];
+  body.replaceChildren(
+    sec("Action queue", pending.length, pending.map((p) => proposalCard(p.id)), "Nothing awaiting your approval."),
+    sec("Priorities", prio.length, prio, "Add high-priority projects or tasks to see them here."),
+    sec("Discrepancy monitor", disc.length, disc.slice(0, 8).map(findingNode), "No evidence-backed discrepancies recorded."),
+    sec("Email intelligence", emailF.length, emailF.slice(0, 8).map(findingNode), "No findings from authorized email yet. Add a thread with + Add source."),
+    sec("Research", research.length, research.slice(0, 6).map(findingNode), "No source-backed research findings yet.", false),
+    sec("Projects", D.projects.length, D.projects.map((p) => h(`<div class="ditem"><div class="row"><b>${esc(p.name)}</b><span class="tag">${esc(p.status)}</span><span class="tag">${esc(p.priority)}</span></div>${p.notes ? `<span class="hint">${esc(p.notes.slice(0, 140))}</span>` : ""}</div>`)), "No projects entered.", false),
+    sec("Skill status", null, [meter], "", false),
+    sec("Security", null, security, "", false),
+  );
+}
+
+function renderCounts() {
+  const n = gate.list().filter((p) => p.status === "pending").length;
+  const q = $("queueCount");
+  q.hidden = !n;
+  q.textContent = n;
+  $("skillCount").textContent = registry.length || "";
+}
+
+// ---------- onboarding ----------
+function runOnboarding() {
+  const S = D.settings;
+  const svc = service();
+  const steps = [
+    () => `<h2 id="modalTitle">Welcome. A few questions to set safe boundaries.</h2><p>O.T.T.E.R. found <b>${registry.length}</b> Claude skills on disk (${registry.filter((s) => s.bmcc).length} BMCC-specific) and is connected to: <b>${esc(engine.label)}</b>.</p><p class="hint">${esc(engine.detail)}</p>${svc ? `<label class="switch"><input id="ob1" type="checkbox" ${serviceApproved() ? "checked" : ""}><span>BMCC permits sending non-protected work content to ${esc(SYSTEMS[svc].label)}.</span></label>` : "<p>No Claude connection yet, so only the built-in analyzers run. You can still set everything up.</p>"}`,
+    () => `<h2 id="modalTitle">Email and Chrome</h2><p>BMCC blocks Claude's Microsoft 365 connector, and there is no supported way for this app to drive the Claude in Chrome extension. So O.T.T.E.R. never touches Outlook. You add threads yourself with <b>+ Add source</b> (paste, or upload a saved .eml or .txt).</p><label class="field"><span>Names and addresses that mean "you" in a thread (for tracking your commitments)</span><input id="ob2" type="text" value="${esc(S.myNames.join(", "))}"></label>${engine.kind === "server" ? `<label class="switch"><input id="obWeb" type="checkbox" ${permissions.check("web_research", "read") ? "checked" : ""}><span>Allow public web research (government, institutional and research sources, with citations).</span></label>` : ""}`,
+    () => `<h2 id="modalTitle">Priority projects</h2><label class="field"><span>One per line. Mark high priority with an asterisk, e.g. *Boardman CDL cohort</span><textarea id="ob3" rows="5" placeholder="*I2PA pre-apprenticeship grant&#10;Fall workshop lineup&#10;Union County COD renewal"></textarea></label><p class="hint">Skip if you prefer to add them later under Projects.</p>`,
+    () => `<h2 id="modalTitle">Briefing format</h2>${["Bottom line first, then reasoning, then a short action list.", "Tight bullet briefing: decision, numbers, risks, next steps.", "Short narrative memo a board member could read."].map((f, i) => `<label class="switch"><input type="radio" name="ob4" value="${esc(f)}" ${S.briefingFormat === f || (!i && !S.briefingFormat) ? "checked" : ""}><span>${esc(f)}</span></label>`).join("")}`,
+    () => `<h2 id="modalTitle">Storage and privacy</h2><p>This version runs locally: history, sources and knowledge stay in this browser on this device. Nothing goes to an outside database. Messages go to Claude only after the privacy guard checks them.</p><label class="field"><span>Delete unpinned conversations after</span><select id="ob5">${[[30, "30 days"], [90, "90 days"], [180, "180 days"], [365, "1 year"], [0, "Never"]].map(([v, l]) => `<option value="${v}" ${+S.retentionDays === v ? "selected" : ""}>${l}</option>`).join("")}</select></label><p class="hint">Student education-record processing (FERPA) is off. Turn it on only with written BMCC approval, in Settings > Privacy.</p>`,
+  ];
+  let i = 0;
+  const n = h(`<div><div class="step-dots" aria-hidden="true">${steps.map(() => "<i></i>").join("")}</div><div id="obBody"></div><div class="actions"><button type="button" class="btn" id="obSkip">Skip setup</button><button type="button" class="btn" id="obBack">Back</button><button type="button" class="btn btn-primary" id="obNext" data-autofocus>Next</button></div></div>`);
+  const close = openModal(n, { onClose: () => { S.onboarded = true; store.save(); } });
+  const collect = () => {
+    const q = (s) => n.querySelector(s);
+    if (q("#ob1")) q("#ob1").checked ? approveService() : svc && serviceApproved() && revokeService(svc);
+    if (q("#ob2")) S.myNames = q("#ob2").value.split(",").map((x) => x.trim()).filter(Boolean);
+    if (q("#obWeb")) { if (q("#obWeb").checked) permissions.grant("web_research", "read", { purpose: "Public research" }); else permissions.revoke("web_research"); savePerms(); }
+    if (q("#ob3") && q("#ob3").value.trim()) {
+      for (const line of q("#ob3").value.split("\n").map((l) => l.trim()).filter(Boolean)) D.projects.push({ id: newId("p"), name: line.replace(/^\*\s*/, ""), priority: line.startsWith("*") ? "high" : "normal", status: "active", notes: "", createdAt: Date.now() });
+      q("#ob3").value = "";
+    }
+    const r = n.querySelector('input[name="ob4"]:checked'); if (r) S.briefingFormat = r.value;
+    if (q("#ob5")) { S.retentionDays = +q("#ob5").value; }
+    store.save();
+  };
+  const show = () => {
+    n.querySelector("#obBody").innerHTML = steps[i]();
+    n.querySelectorAll(".step-dots i").forEach((d, j) => d.classList.toggle("on", j <= i));
+    n.querySelector("#obBack").hidden = i === 0;
+    n.querySelector("#obNext").textContent = i === steps.length - 1 ? "Finish" : "Next";
+  };
+  n.querySelector("#obNext").onclick = () => { collect(); if (i < steps.length - 1) { i++; show(); } else { close(); renderDashboard(); toast("Setup saved. Change anything later in Settings."); } };
+  n.querySelector("#obBack").onclick = () => { collect(); i = Math.max(0, i - 1); show(); };
+  n.querySelector("#obSkip").onclick = close;
+  show();
+}
+
+// ---------- prefs & wiring ----------
+function applyPrefs() {
+  const S = D.settings;
+  if (S.theme === "system") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.dataset.theme = S.theme;
+  document.body.classList.toggle("reduce-motion", !!S.reduceMotion);
+  otter.glasses(S.glasses);
+}
+function closeSideOnNarrow() { $("app").classList.remove("side-open"); }
+
+function wire() {
+  $("newChat").onclick = newConversation;
+  $("searchChats").oninput = () => { historyLimit = PAGE; renderHistory(); };
+  $("groupBy").onchange = renderHistory;
+  document.querySelectorAll(".nav-btn").forEach((b) => (b.onclick = () => showView(b.dataset.view)));
+  $("collapseSide").onclick = () => $("app").classList.toggle("side-collapsed");
+  $("openSide").onclick = () => $("app").classList.add("side-open");
+  $("dashBtn").onclick = () => { const d = $("dashboard"); d.hidden = !d.hidden; $("dashBtn").setAttribute("aria-expanded", String(!d.hidden)); renderDashboard(); };
+  $("dashClose").onclick = () => { $("dashboard").hidden = true; $("dashBtn").setAttribute("aria-expanded", "false"); };
+  $("themeBtn").onclick = () => {
+    const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    D.settings.theme = dark ? "light" : "dark"; applyPrefs(); store.save();
+  };
+  $("addSourceBtn").onclick = () => openSourceModal();
+  $("stopBtn").onclick = () => busy?.abort();
+  const input = $("input");
+  input.oninput = () => { autosize(); if (!busy) setActivity(input.value.trim() ? "listening" : "idle"); };
+  input.onblur = () => { if (!busy && otter.state === "listening") setActivity("idle"); };
+  input.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(input.value); } };
+  input.addEventListener("paste", (e) => {
+    const t = e.clipboardData?.getData("text") || "";
+    if (t.length > 600 && /^\s*(From|Subject|Sent)\s*:/im.test(t)) { e.preventDefault(); openSourceModal({ kind: "email", text: t }); toast("That looks like an email thread, so it goes in as a source."); }
+  });
+  $("composer").onsubmit = (e) => { e.preventDefault(); send(input.value); };
+  // conversation menu
+  const menu = $("convMenu");
+  $("convMenuBtn").onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; menu.querySelector('[data-act="pin"]').textContent = current?.pinned ? "Unpin conversation" : "Pin conversation"; };
+  document.addEventListener("click", (e) => { if (!menu.hidden && !menu.contains(e.target)) menu.hidden = true; });
+  menu.onclick = async (e) => {
+    const act = e.target.dataset.act;
+    if (!act || !current) return;
+    menu.hidden = true;
+    if (act === "pin") { ensureSaved(); current.pinned = !current.pinned; }
+    if (act === "rename") { const v = await promptBox("Rename conversation", "Title", current.title); if (v) { current.title = v; $("convTitle").textContent = v; } }
+    if (act === "project") {
+      const n = h(`<form><h2 id="modalTitle">Assign to project</h2><label class="field"><span>Project</span><select id="projSel"><option value="">No project</option>${D.projects.map((p) => `<option value="${p.id}" ${current.projectId === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>${D.projects.length ? "" : '<p class="hint">No projects yet. Add them under Projects.</p>'}<div class="actions"><button class="btn btn-primary">Save</button></div></form>`);
+      const close = openModal(n);
+      n.onsubmit = (ev) => { ev.preventDefault(); ensureSaved(); current.projectId = n.querySelector("#projSel").value || null; store.save(); renderHistory(); close(); };
+    }
+    if (act === "export") {
+      const md = `# ${current.title}\n\n${current.messages.map((m) => `## ${m.role === "user" ? "You" : "O.T.T.E.R."} (${new Date(m.ts).toLocaleString()})\n\n${m.content}${m.citations?.length ? "\n\nSources:\n" + m.citations.map((c) => `- ${c.title}: ${c.url}`).join("\n") : ""}`).join("\n\n")}\n`;
+      copyText(md);
+    }
+    if (act === "delete") {
+      if (await confirmBox("Delete this conversation?", "Its messages and attached sources are removed from this device. Findings it produced stay on the dashboard until you dismiss them.", "Delete", true)) {
+        for (const sid of current.sourceIds) delete D.sources[sid];
+        D.conversations = D.conversations.filter((c) => c !== current);
+        audit.record("conversation.deleted", { id: current.id });
+        store.save();
+        newConversation();
+        return;
+      }
+    }
+    store.save();
+    renderHistory();
+  };
+}
+
+async function loadRegistry() {
+  if (globalThis.OTTER_SKILLS) return globalThis.OTTER_SKILLS.skills;
+  try { const r = await fetch("/data/skills.json"); if (r.ok) return (await r.json()).skills; } catch {}
+  return [];
+}
+
+async function boot() {
+  applyPrefs();
+  wire();
+  setActivity("idle");
+  registry = await loadRegistry();
+  newConversation();
+  renderCounts();
+  renderEngine();
+  engine = await detectEngine();
+  renderEngine();
+  if (currentView === "chat" && !current.messages.length) renderConversation();
+  if (!D.settings.onboarded) runOnboarding();
+}
+boot();

@@ -1,0 +1,87 @@
+<title>O.T.T.E.R.</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="otter-token" content="">
+<meta name="description" content="Operational Task, Triage, Evaluation and Research: executive assistant for BMCC Community Education and Workforce Training">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="/public/styles.css">
+<div id="app" class="app">
+  <aside id="sidebar" class="sidebar" aria-label="Navigation and conversation history">
+    <div class="side-top">
+      <button id="collapseSide" class="icon-btn" aria-label="Collapse sidebar" title="Collapse sidebar"><span aria-hidden="true">&#8676;</span></button>
+      <div class="brand"><span class="brand-mark">O.T.T.E.R.</span><span class="brand-sub">Operational Task, Triage, Evaluation &amp; Research</span></div>
+    </div>
+    <button id="newChat" class="btn btn-primary side-new"><span aria-hidden="true">+</span><span class="lbl">New chat</span></button>
+    <label class="side-search"><span class="sr">Search chats</span><input id="searchChats" type="search" placeholder="Search chats" autocomplete="off"></label>
+    <nav class="side-nav" aria-label="Sections">
+      <button data-view="chat" class="nav-btn active"><span class="ico" aria-hidden="true">&#9673;</span><span class="lbl">Chat</span></button>
+      <button data-view="projects" class="nav-btn"><span class="ico" aria-hidden="true">&#9638;</span><span class="lbl">Projects</span></button>
+      <button data-view="skills" class="nav-btn"><span class="ico" aria-hidden="true">&#10070;</span><span class="lbl">Skills</span><span id="skillCount" class="count"></span></button>
+      <button data-view="tasks" class="nav-btn"><span class="ico" aria-hidden="true">&#10003;</span><span class="lbl">Tasks</span><span id="queueCount" class="count warn" hidden></span></button>
+      <button data-view="research" class="nav-btn"><span class="ico" aria-hidden="true">&#8981;</span><span class="lbl">Research</span></button>
+      <button data-view="settings" class="nav-btn"><span class="ico" aria-hidden="true">&#9881;</span><span class="lbl">Settings</span></button>
+    </nav>
+    <div class="history-head"><span>History</span><select id="groupBy" aria-label="Group history by"><option value="date">by date</option><option value="project">by project</option></select></div>
+    <div id="history" class="history" role="list"></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button id="openSide" class="icon-btn only-narrow" aria-label="Open sidebar">&#9776;</button>
+      <div class="title-wrap">
+        <h1 id="convTitle" class="conv-title">New conversation</h1>
+        <div class="pills"><span id="enginePill" class="pill">Starting…</span><span id="privacyPill" class="pill pill-quiet" hidden></span></div>
+      </div>
+      <div class="top-actions">
+        <button id="convMenuBtn" class="icon-btn" aria-label="Conversation options" title="Pin, project, export, delete">&#8943;</button>
+        <button id="dashBtn" class="btn btn-ghost" aria-expanded="false" aria-controls="dashboard">Dashboard</button>
+        <button id="themeBtn" class="icon-btn" aria-label="Toggle light or dark" title="Light / dark"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></svg></button>
+      </div>
+      <div class="avatar-wrap" aria-live="polite">
+        <div id="otter" class="otter" role="img" aria-label="O.T.T.E.R. is idle"></div>
+        <div id="otterCaption" class="otter-caption">Ready</div>
+      </div>
+      <div id="convMenu" class="menu" hidden role="menu">
+        <button data-act="pin" role="menuitem">Pin conversation</button>
+        <button data-act="project" role="menuitem">Assign to project…</button>
+        <button data-act="rename" role="menuitem">Rename…</button>
+        <button data-act="export" role="menuitem">Export as Markdown</button>
+        <button data-act="delete" role="menuitem" class="danger">Delete conversation</button>
+      </div>
+    </header>
+
+    <section id="view-chat" class="view active" aria-label="Chat">
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <div class="composer">
+        <div id="sourceTray" class="source-tray"></div>
+        <div id="thinkingLine" class="thinking-line" hidden><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="thinkingText">Checking the evidence…</span><button id="stopBtn" class="link-btn">Stop</button></div>
+        <form id="composer" class="composer-box" autocomplete="off">
+          <button type="button" id="addSourceBtn" class="icon-btn attach" aria-label="Add an email or document" title="Add an authorized email or document">&#43;</button>
+          <label class="sr" for="input">Message O.T.T.E.R.</label>
+          <textarea id="input" rows="1" placeholder="Ask, paste a thread, or describe a decision. Enter sends, Shift+Enter adds a line."></textarea>
+          <button id="sendBtn" class="btn btn-primary send" type="submit">Send</button>
+        </form>
+        <p class="composer-note">O.T.T.E.R. drafts and proposes. Nothing is sent, submitted or changed until you approve it.</p>
+      </div>
+    </section>
+
+    <section id="view-projects" class="view" aria-label="Projects"></section>
+    <section id="view-skills" class="view" aria-label="Skill Registry"></section>
+    <section id="view-tasks" class="view" aria-label="Tasks and approvals"></section>
+    <section id="view-research" class="view" aria-label="Research"></section>
+    <section id="view-settings" class="view" aria-label="Settings"></section>
+  </main>
+
+  <aside id="dashboard" class="dashboard" aria-label="Executive dashboard" hidden>
+    <div class="dash-head"><h2>Executive dashboard</h2><button id="dashClose" class="icon-btn" aria-label="Close dashboard">&times;</button></div>
+    <div id="dashBody" class="dash-body"></div>
+  </aside>
+</div>
+
+<div id="modalRoot" class="modal-root" hidden>
+  <div class="modal-scrim"></div>
+  <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"></div>
+</div>
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script type="module" src="/public/app.js"></script>
