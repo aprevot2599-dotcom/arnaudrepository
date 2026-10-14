@@ -29,10 +29,11 @@ export const DEFAULT_SETTINGS = {
   systemVolumeAtLaunch: true,
   launchVolume: 20,
   voiceOnboarded: false,
+  askAboveTokens: 15000,
 };
 
 function blank() {
-  return { version: 1, conversations: [], sources: {}, findings: [], proposals: [], audit: [], knowledge: [], projects: [], tasks: [], permissions: {}, settings: { ...DEFAULT_SETTINGS }, counters: { source: 0 }, usage: emptyUsage() };
+  return { version: 1, conversations: [], sources: {}, findings: [], proposals: [], audit: [], knowledge: [], projects: [], tasks: [], permissions: {}, settings: { ...DEFAULT_SETTINGS }, counters: { source: 0 }, usage: emptyUsage(), tokenLedger: {}, lastVerify: null };
 }
 
 export class Store {

@@ -26,14 +26,14 @@ export function activityForTool(name, input = {}) {
   }
 }
 
-export function buildSystemPrompt({ settings, plan, sources, knowledgeHits, mode, permissions, today, projects = [], capabilities = [] }) {
+export function buildSystemPrompt({ settings, plan, sources, knowledgeHits, mode, permissions, today, projects = [], capabilities = [], route = null }) {
   const perms = Object.entries(SYSTEMS)
     .filter(([k]) => permissions.scope(k) !== "none")
     .map(([k, v]) => `${v.label}: ${permissions.scope(k)}`)
     .join("; ") || "none beyond O.T.T.E.R.'s local knowledge base";
-  const webLine = mode === "server" && permissions.check("web_research", "read")
+  const webLine = mode === "server" && permissions.check("web_research", "read") && (!route || route.include?.web)
     ? "You have a web_search tool. Prefer primary sources (BLS, Oregon Employment Department/QualityInfo, HECC, ED.gov, grants.gov, official college sites). Cite every external factual claim with its URL and publication date where available, and say when a source may be outdated."
-    : "You have NO web access in this session. Do not cite or describe any web source, statistic or publication you have not been given here. If research is needed, say what to look up and where.";
+    : mode === "server" && permissions.check("web_research", "read") ? "Web search is available only on the deep route, and this request is not on it. If current external facts are needed, say so and suggest the deep route; do not cite or invent sources." : "You have NO web access in this session. Do not cite or describe any web source, statistic or publication you have not been given here. If research is needed, say what to look up and where.";
   const kb = knowledgeHits.length
     ? knowledgeHits.map((k) => `- [${k.id}] ${k.title}: ${k.text.slice(0, 400)} (source: ${k.provenance || "unknown"}; recorded ${new Date(k.updatedAt || k.createdAt).toISOString().slice(0, 10)}${k.expiresAt && k.expiresAt < Date.now() ? "; EXPIRED, verify before use" : ""})`).join("\n")
     : "(no matching entries)";
@@ -65,13 +65,28 @@ When a request shows that a new connector, skill or setup change would clearly h
 
 Your answers may be read aloud. Put the bottom line in the first one or two sentences, in plain spoken English.
 
+How every answer is shaped (this matters to Dr. Prevot):
+1. Open with an interpretation callout saying, in one or two sentences, what you understood the request to mean. Interpret shorthand and dictation artifacts (for example, a spoken "period" that is punctuation, or a word the speech recognizer likely misheard) and say how you read them:
+:::understood
+...
+:::
+2. If something material is ambiguous, ask up to two clarification questions in a :::question callout. On the quick route, ask and stop. On other routes, state the assumption you are proceeding with, then continue.
+3. Give the answer, bottom line first.
+4. Close with exactly one concrete suggestion phrased "You can make this experience better if you ..." (a missing source, a permission, a connector, a skill, or a clearer instruction), in a callout:
+:::better
+You can make this experience better if you ...
+:::
+Skip steps 1 and 4 only for one-line acknowledgements.
+
+Token budget: this request is on the ${route ? route.label.toLowerCase() : "standard"} route${route?.estimate ? ` (estimated ${route.estimate.total} tokens)` : ""}. ${route?.tier === "quick" ? "Keep the answer under 150 words and use at most one tool call. If the request needs sources, skills or research, say what the standard or deep route would add instead of attempting it." : route?.tier === "deep" ? "Depth is wanted; be thorough but do not pad." : "Be complete but economical; avoid unnecessary tool calls."}
+
 Recommendations follow this frame: the decision; evidence available; assumptions; realistic alternatives; financial implications; staffing and capacity; fit with BMCC priorities and its rural service area; risks and opportunity cost; recommendation; what evidence would change it.
 
 Formatting: Markdown. Wrap structured items in callout blocks so the interface can label them:
 :::recommendation
 ...
 :::
-Other callout kinds: finding, discrepancy, opportunity, draft, question, risk, limitation, suggestion. Use a discrepancy callout with Finding / Evidence / Confidence / Impact / Possible explanations / Recommendation / Next step. In email work, label each deadline "explicit" (date stated) or "inferred".
+Other callout kinds: finding, discrepancy, opportunity, draft, question, risk, limitation, suggestion, understood, better. Use a discrepancy callout with Finding / Evidence / Confidence / Impact / Possible explanations / Recommendation / Next step. In email work, label each deadline "explicit" (date stated) or "inferred".
 
 Skill orchestration plan for this request (from Dr. Prevot's discovered Claude skills):
 ${planSummary(plan)}
@@ -229,24 +244,27 @@ export function prepareOutbound({ userText, history, sources, settings, service 
   };
 }
 
-export async function runTurn({ transport, ctx, userText, history, onText = () => {}, signal }) {
+export async function runTurn({ transport, ctx, userText, history, onText = () => {}, signal, route = null }) {
   const service = transport.service;
   const plan = planRequest(userText, ctx.registry, { permissions: ctx.permissions, settings: ctx.settings });
   ctx.onPlan?.(plan);
   if (transport.kind === "offline") return offlineAnswer({ ctx, userText, plan });
 
   ctx.permissions.require(service, "read");
-  const out = prepareOutbound({ userText, history, sources: ctx.rawSources, settings: ctx.settings, service });
+  const inc = route?.include || {};
+  const keptHistory = inc.historyTurns ? history.slice(-inc.historyTurns) : history;
+  const keptSources = route && !inc.sources ? [] : ctx.rawSources;
+  const out = prepareOutbound({ userText, history: keptHistory, sources: keptSources, settings: ctx.settings, service });
   if (out.blocked) return { blocked: true, privacy: out, plan, text: "" };
   ctx.sources = out.sources;
   ctx.untrusted = ctx.sources.length > 0 || detectInjection(userText).length > 0;
   ctx.request = userText;
   ctx.citations = new Map();
   // Stored knowledge and project notes leave the device too, so they get the same redaction.
-  const knowledgeHits = searchKnowledge(ctx.knowledge, userText, 5).map((k) => ({ ...k, text: redact(k.text) }));
+  const knowledgeHits = searchKnowledge(ctx.knowledge, userText, inc.knowledge ?? 5).map((k) => ({ ...k, text: redact(k.text) }));
   const projects = (ctx.projects || []).map((p) => ({ ...p, notes: redact(p.notes || "") }));
-  const system = buildSystemPrompt({ settings: ctx.settings, plan, sources: ctx.sources, knowledgeHits, mode: transport.kind, permissions: ctx.permissions, today: new Date().toISOString().slice(0, 10), projects, capabilities: ctx.capabilities || [] });
-  const tools = buildTools(ctx).map((t) => ({
+  const system = buildSystemPrompt({ settings: ctx.settings, plan, sources: ctx.sources, knowledgeHits, mode: transport.kind, permissions: ctx.permissions, today: new Date().toISOString().slice(0, 10), projects, capabilities: ctx.capabilities || [], route });
+  const tools = buildTools(ctx).filter((t) => !inc.tools || inc.tools.includes(t.name)).map((t) => ({
     ...t,
     execute: async (input, toolCtx) => {
       ctx.onActivity?.(activityForTool(t.name, input || {}), t.name);
@@ -254,7 +272,7 @@ export async function runTurn({ transport, ctx, userText, history, onText = () =
     },
   }));
   const turns = [...out.history, { role: "user", content: out.userText }];
-  const res = await transport.run({ system, turns, tools, onText, signal, ctx });
+  const res = await transport.run({ system, turns, tools, onText, signal, ctx, route });
   return { ...res, plan, privacy: out, citations: [...ctx.citations.entries()].map(([url, v]) => ({ url, ...v })) };
 }
 
@@ -263,10 +281,11 @@ export function artifactTransport(sample) {
   return {
     kind: "artifact",
     service: "claude_ai",
-    async run({ system, turns, tools, onText, signal }) {
+    async run({ system, turns, tools, onText, signal, route }) {
       const input = [{ role: "user", content: system + "\n\nAcknowledge with OK, then follow these rules for the rest of the conversation." }, { role: "assistant", content: "OK." }, ...turns];
-      const { text, truncated } = await sample(input, { tools: tools.map(({ name, description, inputSchema, execute }) => ({ name, description, inputSchema, execute })), onText: ({ text }) => onText(text), signal });
-      return { text, truncated };
+      const { text, truncated } = await sample(input, { tools: tools.map(({ name, description, inputSchema, execute }) => ({ name, description, inputSchema, execute })), onText: ({ text }) => onText(text), signal, ...(route?.modelTier ? { modelTier: route.modelTier } : {}) });
+      // The claude.ai runtime does not report token counts; the router's estimate stands.
+      return { text, truncated, usage: null };
     },
   };
 }
@@ -275,16 +294,23 @@ export function serverTransport({ token, base = "" }) {
   return {
     kind: "server",
     service: "anthropic_api",
-    async run({ system, turns, tools, onText, signal, ctx }) {
+    async run({ system, turns, tools, onText, signal, ctx, route }) {
       const messages = turns.map((t) => ({ role: t.role, content: t.content }));
+      const usage = { input_tokens: 0, output_tokens: 0, rounds: 0, web_searches: 0 };
       const toolDefs = tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }));
       const byName = new Map(tools.map((t) => [t.name, t]));
-      const webSearch = ctx.permissions.check("web_research", "read");
+      const webSearch = ctx.permissions.check("web_research", "read") && (!route || !!route.include?.web);
       const texts = [];
       for (let round = 0; round < 12; round++) {
-        const r = await fetch(base + "/api/messages", { method: "POST", headers: { "content-type": "application/json", "x-otter-token": token }, body: JSON.stringify({ system, messages, tools: toolDefs, webSearch }), signal });
+        const r = await fetch(base + "/api/messages", { method: "POST", headers: { "content-type": "application/json", "x-otter-token": token }, body: JSON.stringify({ system, messages, tools: toolDefs, webSearch, effort: route?.effort, model: route?.model }), signal });
         const msg = await r.json().catch(() => ({ error: "Bad response from the local server." }));
-        if (!r.ok || msg.error) throw Object.assign(new Error(msg.error || `Local server error ${r.status}`), { code: msg.code || "upstream_error" });
+        if (!r.ok || msg.error) throw Object.assign(new Error(msg.error || `Local server error ${r.status}`), { code: msg.code || "upstream_error", usage });
+        if (msg.usage) {
+          usage.rounds++;
+          usage.input_tokens += msg.usage.input_tokens || 0;
+          usage.output_tokens += msg.usage.output_tokens || 0;
+          usage.web_searches += msg.usage.server_tool_use?.web_search_requests || 0;
+        }
         for (const b of msg.content || []) {
           if (b.type === "text") {
             texts.push(b.text);
@@ -312,7 +338,7 @@ export function serverTransport({ token, base = "" }) {
         }));
         messages.push({ role: "user", content: results });
       }
-      return { text: texts.join("") };
+      return { text: texts.join(""), usage };
     },
   };
 }
@@ -321,7 +347,7 @@ export const offlineTransport = { kind: "offline", service: null };
 
 // No model connected: answer from the deterministic engines only, and say so.
 export function offlineAnswer({ ctx, userText, plan }) {
-  const parts = ["**No AI engine is connected**, so this answer comes from O.T.T.E.R.'s built-in analyzers only. Connect Claude in Settings > Engine for full answers."];
+  const parts = [`:::understood\nI matched your request to ${plan.intents.length ? plan.intents.map((i) => i.replace(/_/g, " ")).join(", ") : "no specific task type"} by keywords only, because no AI is connected to interpret it.\n:::`, "**No AI engine is connected**, so this answer comes from O.T.T.E.R.'s built-in analyzers only (0 tokens). Connect Claude in Settings > Engine for full answers."];
   if (plan.steps.length) parts.push("**Skill plan for this request**\n" + planSummary(plan));
   for (const c of matchCapabilities(userText, ctx.capabilities || [])) parts.push(explain(c));
   const emails = ctx.rawSources.filter((s) => s.kind === "email");
@@ -336,6 +362,6 @@ export function offlineAnswer({ ctx, userText, plan }) {
     const d = findDiscrepancies(ctx.rawSources);
     parts.push(d.length ? "**Discrepancy candidates**\n" + d.map((x) => `:::discrepancy\n**Finding:** ${x.finding}\n\n**Evidence:**\n${x.evidence.map((e) => `- ${e.sourceTitle}: "${e.quote}"`).join("\n")}\n\n**Confidence:** ${x.confidence}\n\n**Possible explanations:** ${x.possibleExplanations.join(" ")}\n:::`).join("\n\n") : "**Discrepancy check**: no conflicting figures found in the attached sources. That covers dollar amounts and counts only.");
   }
-  if (parts.length === 1 + (plan.steps.length ? 1 : 0)) parts.push("Attach an email or document with **Add source**, then ask me to summarize it or check it for discrepancies.");
+  if (parts.length === 2 + (plan.steps.length ? 1 : 0)) parts.push("Attach an email or document with **Add source**, then ask me to summarize it or check it for discrepancies.");
   return { text: parts.join("\n\n"), plan, offline: true, citations: [] };
 }

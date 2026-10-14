@@ -6,10 +6,13 @@ import { renderMarkdown, esc } from "./markdown.js";
 import { Store } from "./store.js";
 import { PermissionRegistry, ApprovalGate, AuditLog, SYSTEMS, ACTION_TYPES, describeProposalStatus, skillStatus, newId } from "../core/security.js";
 import { scanSensitive, redact, redactForLog, detectInjection } from "../core/privacy.js";
-import { runTurn, artifactTransport, serverTransport, offlineTransport } from "../core/agent.js";
+import { runTurn, artifactTransport, serverTransport, offlineTransport, offlineAnswer } from "../core/agent.js";
 import { assessCapabilities, matchCapabilities, explain, STATUS_TEXT } from "../core/capabilities.js";
 import { recordTurn, recordExecution, recommend, dueRecommendation, markShown, recommendationMarkdown } from "../core/advisor.js";
 import { parseCommand } from "../core/voicecmd.js";
+import { chooseRoute, describeEstimate, fmtTokens, costUsd, TIERS } from "../core/router.js";
+import { buildReport, reportMarkdown, needsCatchUp } from "../core/verify.js";
+import { planRequest } from "../core/orchestrator.js";
 import { Speaker, Listener, vendorOf } from "./voice.js";
 
 const $ = (id) => document.getElementById(id);
@@ -329,9 +332,12 @@ function messageNode(m) {
     for (const s of m.citations) c.querySelector("ol").append(h(`<li><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a>${s.pageAge ? ` <span class="hint">(${esc(s.pageAge)})</span>` : ' <span class="hint">(date not given)</span>'}</li>`));
     n.append(c);
   }
+  if (!isUser && (m.route || m.local)) n.append(usageLine(m));
   if (!isUser && m.content) {
-    const tools = h(`<div class="msg-tools"><button type="button" data-copy>Copy</button>${bubble.classList.contains("collapsed") ? '<button type="button" data-expand>Show all</button>' : ""}</div>`);
+    const tools = h(`<div class="msg-tools"><button type="button" data-copy>Copy</button>${m.route?.upgrade && m.question ? `<button type="button" data-deeper>Go deeper: ${esc(TIERS[m.route.upgrade.tier].label.toLowerCase())} route, about ${fmtTokens(m.route.upgrade.estimate.total)} tokens</button>` : ""}${bubble.classList.contains("collapsed") ? '<button type="button" data-expand>Show all</button>' : ""}</div>`);
     tools.querySelector("[data-copy]").onclick = () => copyText(m.content, bubble);
+    const deeper = tools.querySelector("[data-deeper]");
+    if (deeper) deeper.onclick = () => send(m.question, { forceTier: m.route.upgrade.tier });
     const ex = tools.querySelector("[data-expand]");
     if (ex) ex.onclick = () => { const c = bubble.classList.toggle("collapsed"); ex.textContent = c ? "Show all" : "Collapse"; };
     n.append(tools);
@@ -425,14 +431,18 @@ function autosize() {
   const el = $("input");
   el.style.height = "auto";
   el.style.height = Math.min(el.scrollHeight, 240) + "px";
+  if (!el.value) $("routeHint").textContent = "";
 }
 
-async function send(text) {
+async function send(text, { forceTier = null, confirmed = false } = {}) {
   text = text.trim();
   if (!text || busy) return;
   speaker.stop();
   const cmd = parseCommand(text);
   if (cmd) { $("input").value = ""; autosize(); return handleCommand(cmd, text); }
+  const route = routeFor(text, forceTier);
+  if (route.tier === "local") { $("input").value = ""; autosize(); return answerLocally(text, route); }
+  if (!confirmed && D.settings.askAboveTokens && route.estimate.total > D.settings.askAboveTokens) return preflight(text, route);
   if (engine.kind !== "offline" && !serviceApproved()) { askServiceApproval(() => send(text)); return; }
   ensureSaved();
   if (!current.messages.length) current.title = autoTitle(text);
@@ -485,7 +495,10 @@ async function send(text) {
   const bubble = live.querySelector(".bubble");
   let final = "done";
   try {
-    const res = await runTurn({ transport: engine.transport, ctx, userText: text, history, signal: busy.signal, onText: (t) => { bubble.innerHTML = renderMarkdown(t); scroll(); } });
+    reply.question = text;
+    reply.route = { tier: route.tier, label: route.label, estimate: route.estimate, upgrade: route.upgrade || null, model: route.model };
+    const res = await runTurn({ transport: engine.transport, ctx, userText: text, history, route, signal: busy.signal, onText: (t) => { bubble.innerHTML = renderMarkdown(t); scroll(); } });
+    reply.usage = res.usage || null;
     reply.plan = res.plan;
     reply.skillsUsed = [...usedSkills];
     if (res.blocked) {
@@ -506,7 +519,7 @@ async function send(text) {
     else if (code === "not_authorized") { reply.notice = { kind: "bad", text: "Locked door. I'll wait for authorization. " + e.message }; final = "locked"; }
     else if (code === "not_granted" || code === "sampling_disabled") { reply.notice = { kind: "bad", text: "Claude access was declined for this page, so I can't answer with Claude. Reload and choose Allow, or keep using the built-in analyzers." }; final = "locked"; engine = { kind: "offline", transport: offlineTransport, label: "Built-in analyzers only", detail: "Claude access was declined." }; renderEngine(); }
     else if (code === "rate_limited") { reply.notice = { kind: "bad", text: "Claude usage limit or rate limit reached. Try again in a little while; nothing was retried automatically." }; final = "error"; }
-    else { reply.content = (e.text || "").trim(); reply.notice = { kind: "bad", text: "That didn't work: " + (e.message || "unknown error") + (e.text ? " The partial answer is kept above." : "") }; final = "error"; }
+    else { if (e.usage) reply.usage = e.usage; reply.content = (e.text || "").trim(); reply.notice = { kind: "bad", text: "That didn't work: " + (e.message || "unknown error") + (e.text ? " The partial answer is kept above." : "") }; final = "error"; }
   } finally {
     busy = null;
     clearInterval(lineTimer);
@@ -515,6 +528,7 @@ async function send(text) {
   }
   current.messages.push(reply);
   current.updatedAt = Date.now();
+  if (reply.route && !reply.notice?.text?.startsWith("Privacy guard")) logTokens(reply);
   store.save();
   live.replaceWith(messageNode(reply));
   scroll();
@@ -784,6 +798,7 @@ function renderSettings() {
         <label class="switch"><input id="glasses" type="checkbox" ${S.glasses ? "checked" : ""}><span>Reading glasses on the otter</span></label>
         <label class="switch"><input id="motion" type="checkbox" ${S.reduceMotion ? "checked" : ""}><span>Reduce motion</span></label></div>
       <div class="card"><h3>Data</h3>
+        <label class="field"><span>Ask me before sending a request larger than</span><select id="askAbove">${[[5000, "5k tokens"], [15000, "15k tokens"], [30000, "30k tokens"], [60000, "60k tokens"], [0, "Never ask"]].map(([v, l]) => `<option value="${v}" ${+S.askAboveTokens === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <label class="field"><span>Delete unpinned conversations after</span><select id="retention">${[[30, "30 days"], [90, "90 days"], [180, "180 days"], [365, "1 year"], [0, "Never"]].map(([v, l]) => `<option value="${v}" ${+S.retentionDays === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <p class="hint" style="margin:0">${D.conversations.length} conversations, ${Object.keys(D.sources).length} sources, ${D.knowledge.length} knowledge entries, ${D.findings.length} findings on this device.</p>
         <div class="toolbar"><button type="button" class="btn" id="exportAll">Copy full export (JSON)</button><button type="button" class="btn btn-bad" id="wipeAll">Delete all O.T.T.E.R. data</button></div>
@@ -837,6 +852,7 @@ function renderSettings() {
   $$("#themeSel").onchange = (e) => { S.theme = e.target.value; applyPrefs(); store.save(); };
   $$("#glasses").onchange = (e) => { S.glasses = e.target.checked; applyPrefs(); store.save(); };
   $$("#motion").onchange = (e) => { S.reduceMotion = e.target.checked; applyPrefs(); store.save(); };
+  $$("#askAbove").onchange = (e) => { S.askAboveTokens = +e.target.value; store.save(); };
   $$("#retention").onchange = (e) => { S.retentionDays = +e.target.value; const n = store.purgeExpired(); store.save(); renderHistory(); toast(n ? `Removed ${n} old conversation(s).` : "Retention updated."); };
   $$("#exportAll").onclick = () => copyText(store.exportJSON());
   $$("#wipeAll").onclick = async () => { if (await confirmBox("Delete everything?", "All conversations, sources, findings, knowledge, approvals, permissions and settings on this device will be erased. This cannot be undone.", "Delete all", true)) { store.wipe(); location.reload(); } };
@@ -895,6 +911,8 @@ function renderDashboard() {
     sec("Email intelligence", emailF.length, emailF.slice(0, 8).map(findingNode), "No findings from authorized email yet. Add a thread with + Add source."),
     sec("Research", research.length, research.slice(0, 6).map(findingNode), "No source-backed research findings yet.", false),
     sec("Projects", D.projects.length, D.projects.map((p) => h(`<div class="ditem"><div class="row"><b>${esc(p.name)}</b><span class="tag">${esc(p.status)}</span><span class="tag">${esc(p.priority)}</span></div>${p.notes ? `<span class="hint">${esc(p.notes.slice(0, 140))}</span>` : ""}</div>`)), "No projects entered.", false),
+    sec("Claude usage", null, [(() => { const d = tokenTotals(1), w = tokenTotals(7), mo = tokenTotals(30); const n = h(`<div class="ditem"><div class="row"><b>Today</b> ${fmtTokens(d.tokens)} tokens in ${d.turns} answer${d.turns === 1 ? "" : "s"}${d.cost ? ` · $${d.cost.toFixed(2)}` : ""}</div><span class="hint">7 days: ${fmtTokens(w.tokens)} · 30 days: ${fmtTokens(mo.tokens)}${mo.cost ? ` · $${mo.cost.toFixed(2)}` : ""}${mo.estimated ? ` · ${fmtTokens(mo.estimated)} of that estimated` : ""}. Ask-before limit: ${fmtTokens(D.settings.askAboveTokens)}.</span></div>`); return n; })()], "", true),
+    sec("Morning check", D.lastVerify ? D.lastVerify.issues.length : null, D.lastVerify ? [h(`<div class="ditem"><span>${esc(D.lastVerify.summary)}</span>${D.lastVerify.issues.slice(0, 2).map((c) => `<span class="hint"><b>${esc(c.name)}:</b> ${esc(c.detail)}</span>`).join("")}<span class="hint">${esc(new Date(D.lastVerify.ranAt).toLocaleString())}</span></div>`)] : [], "Not run yet.", false),
     sec("Grow O.T.T.E.R.", recommend(D.usage, advisorEnv()).length, recommend(D.usage, advisorEnv()).slice(0, 3).map((r) => { const n = h(`<div class="ditem"><b>${esc(r.title)}</b><span class="hint">${esc(r.evidence)}</span><button type="button" class="link-btn" style="justify-self:start">Details</button></div>`); n.querySelector("button").onclick = () => showView("abilities"); return n; }), "No suggestions yet. They come from where I get stuck.", false),
     sec("Skill status", null, [meter], "", false),
     sec("Security", null, security, "", false),
@@ -965,6 +983,113 @@ function runOnboarding({ only = null, onDone = null } = {}) {
   n.querySelector("#obBack").onclick = () => { collect(); i = Math.max(0, i - 1); show(); };
   n.querySelector("#obSkip").onclick = close;
   show();
+}
+
+// ---------- routing and token accounting ----------
+function routeFor(text, forceTier = null) {
+  const sources = current ? current.sourceIds.map((id) => D.sources[id]).filter(Boolean) : [];
+  const plan = planRequest(text, registry, { permissions, settings: D.settings });
+  const history = current ? current.messages.filter((m) => m.content && !m.local).map((m) => ({ content: m.content })) : [];
+  return chooseRoute(text, {
+    plan, sources, history, forceTier,
+    engineKind: engine.kind,
+    webAllowed: permissions.check("web_research", "read"),
+    capabilities: assessCapabilities(capEnv()),
+    model: engine.cap?.model, quickModel: engine.cap?.quickModel !== engine.cap?.model ? engine.cap?.quickModel : null,
+  });
+}
+
+function usageLine(m) {
+  if (m.local) return h(`<div class="usage-line">Answered locally · 0 tokens</div>`);
+  const r = m.route;
+  if (m.usage && m.usage.rounds) {
+    const total = m.usage.input_tokens + m.usage.output_tokens;
+    const c = costUsd(r.model || engine.cap?.model, m.usage.input_tokens, m.usage.output_tokens);
+    return h(`<div class="usage-line">${esc(r.label)} route · used ${total.toLocaleString()} tokens (${m.usage.input_tokens.toLocaleString()} in, ${m.usage.output_tokens.toLocaleString()} out${m.usage.web_searches ? `, ${m.usage.web_searches} web search${m.usage.web_searches === 1 ? "" : "es"}` : ""})${c != null ? ` · about $${c.toFixed(3)}` : ""} · estimate was ${fmtTokens(r.estimate.total)}</div>`);
+  }
+  return h(`<div class="usage-line">${esc(r.label)} route · about ${fmtTokens(r.estimate.total)} tokens (estimate${engine.kind === "artifact" ? "; claude.ai doesn't report exact counts, and this draws on your plan's usage limits" : ""})</div>`);
+}
+
+function logTokens(m) {
+  const day = new Date().toISOString().slice(0, 10);
+  const L = (D.tokenLedger[day] ||= { tokens: 0, exact: 0, estimated: 0, cost: 0, turns: 0 });
+  L.turns++;
+  if (m.usage?.rounds) {
+    const t = m.usage.input_tokens + m.usage.output_tokens;
+    L.tokens += t; L.exact += t;
+    L.cost += costUsd(m.route.model || engine.cap?.model, m.usage.input_tokens, m.usage.output_tokens) || 0;
+  } else { L.tokens += m.route.estimate.total; L.estimated += m.route.estimate.total; }
+  for (const d of Object.keys(D.tokenLedger).sort().slice(0, -90)) delete D.tokenLedger[d];
+}
+function tokenTotals(days) {
+  const cutoff = new Date(Date.now() - (days - 1) * 86400000).toISOString().slice(0, 10);
+  return Object.entries(D.tokenLedger).filter(([d]) => d >= cutoff).reduce((a, [, v]) => ({ tokens: a.tokens + v.tokens, estimated: a.estimated + v.estimated, cost: a.cost + v.cost, turns: a.turns + v.turns }), { tokens: 0, estimated: 0, cost: 0, turns: 0 });
+}
+
+function preflight(text, route) {
+  const cheaper = ["quick", "standard"].filter((t) => TIERS[t].rounds < TIERS[route.tier].rounds).map((t) => routeFor(text, t)).pop();
+  const n = h(`<div><h2 id="modalTitle">This request is larger than your limit</h2>
+    <p>The ${esc(route.label.toLowerCase())} route would use ${esc(describeEstimate(route, engine.kind))}. Your limit for sending without asking is ${fmtTokens(D.settings.askAboveTokens)} tokens.</p>
+    <ul class="hint">${route.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
+    ${cheaper ? `<p>The cheaper ${esc(cheaper.label.toLowerCase())} route would use ${esc(describeEstimate(cheaper, engine.kind))}${cheaper.include.sources ? "" : ", without your attached sources"}.</p>` : `<p class="hint">Detaching sources you don't need is the fastest way to shrink it.</p>`}
+    <div class="actions"><button type="button" class="btn" data-cancel data-autofocus>Cancel</button>${cheaper ? `<button type="button" class="btn" data-cheap>Use ${esc(cheaper.label.toLowerCase())} route</button>` : ""}<button type="button" class="btn btn-primary" data-go>Send, about ${fmtTokens(route.estimate.total)} tokens</button></div></div>`);
+  const close = openModal(n);
+  n.querySelector("[data-cancel]").onclick = close;
+  n.querySelector("[data-go]").onclick = () => { close(); send(text, { forceTier: route.tier, confirmed: true }); };
+  const ch = n.querySelector("[data-cheap]");
+  if (ch) ch.onclick = () => { close(); send(text, { forceTier: cheaper.tier, confirmed: true }); };
+}
+
+function answerLocally(text, route) {
+  if (/^(run (the )?(morning|daily) check|verify yourself|self[- ]check|morning check)\b/i.test(text)) { addLocalMessages(text, "Running the morning check now. It uses no Claude tokens.", { speak: false }); return runMorningCheck("manual", { post: true }); }
+  const caps = matchCapabilities(text, assessCapabilities(capEnv()));
+  if (caps.length) return addLocalMessages(text, `:::understood\nYou're asking whether I can ${caps.map((c) => c.name.toLowerCase()).join(" and ")}. I answered from my own status list, so this used 0 tokens.\n:::\n\n${caps.map(explain).join("\n\n")}`);
+  if (engine.kind === "offline") {
+    const out = offlineAnswerFor(text);
+    return addLocalMessages(text, out);
+  }
+  addLocalMessages(text, /thank/i.test(text) ? "You're welcome." : "I'm here. What do you need?");
+}
+function offlineAnswerFor(text) {
+  // Same built-in analyzers the offline engine uses, with a 0-token footer
+  const plan = planRequest(text, registry, { permissions, settings: D.settings });
+  const ctxLite = { rawSources: current.sourceIds.map((id) => D.sources[id]).filter(Boolean), settings: D.settings, capabilities: assessCapabilities(capEnv()) };
+  return offlineAnswer({ ctx: ctxLite, userText: text, plan }).text;
+}
+
+let routeTimer = null;
+function updateRouteHint() {
+  clearTimeout(routeTimer);
+  routeTimer = setTimeout(() => {
+    const t = $("input").value.trim();
+    const el = $("routeHint");
+    if (!t || !current) { el.textContent = ""; return; }
+    const r = routeFor(t);
+    el.textContent = r.tier === "local" ? "Route: local · 0 tokens. " : `Route: ${r.label.toLowerCase()} · about ${fmtTokens(r.estimate.total)} tokens${r.estimate.costUsd != null ? ` (~$${r.estimate.costUsd.toFixed(3)})` : ""}. `;
+    el.title = r.reasons.join(" ");
+  }, 250);
+}
+
+// ---------- morning check ----------
+async function fetchServerReport(run = false) {
+  if (!engine.token) return null;
+  try {
+    const r = await fetch(run ? "/api/verify/run" : "/api/verify/latest", { method: run ? "POST" : "GET", headers: { "x-otter-token": engine.token } });
+    return r.ok ? (await r.json()).report : null;
+  } catch { return null; }
+}
+async function runMorningCheck(trigger, { post = true } = {}) {
+  let server = await fetchServerReport(false);
+  if (engine.token && (trigger === "manual" || needsCatchUp(server?.ranAt))) server = await fetchServerReport(true);
+  const env = { ...capEnv(), engineLabel: engine.label, storage: store.available, pending: gate.list().filter((p) => p.status === "pending"), knowledge: D.knowledge };
+  const report = buildReport({ trigger, env, serverReport: server });
+  D.lastVerify = report;
+  audit.record("verify.ran", { trigger, issues: report.issues.length, tokens: report.tokensUsed });
+  store.save();
+  if (post) showLocalReply(reportMarkdown(report), { speak: false });
+  if (currentView === "abilities") renderAbilities();
+  renderDashboard();
+  return report;
 }
 
 // ---------- voice, conversation and computer volume ----------
@@ -1169,6 +1294,7 @@ function renderAbilities() {
   const page = h(`<div class="page">
     <div><h2>Abilities and growth</h2><p class="lead">What I can do right now, what I can't and why, and the piece that would unlock it. This updates as you add permissions, connectors or the local server. Recommendations come from counts of what you ask for and where I get stuck, kept on this device. I never read past conversations to make them.</p></div>
     <div class="card"><div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="flex:1;margin:0">Grow O.T.T.E.R.</h3>${engine.kind !== "offline" ? '<button type="button" class="btn" id="askIdeas">Ask Claude for more ideas</button>' : ""}</div><div id="recList" class="findings-list"></div></div>
+    <div class="card"><div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="flex:1;margin:0">Morning check</h3><button type="button" class="btn" id="runCheck">Run now (0 tokens)</button></div><div id="verifyBox"></div></div>
     <div class="card"><h3>What I can and can't do</h3>${capabilityReport()}</div>
   </div>`);
   const list = page.querySelector("#recList");
@@ -1179,6 +1305,10 @@ function renderAbilities() {
     list.append(n);
   }
   if (!recs.length) list.append(h(`<p class="dempty">No recommendations yet. I suggest connectors and skills after I see where I get stuck (${D.usage.turns} conversation turn${D.usage.turns === 1 ? "" : "s"} so far). Nothing is invented to fill this space.</p>`));
+  const vb = page.querySelector("#verifyBox");
+  const V = D.lastVerify;
+  vb.innerHTML = V ? `<p class="hint" style="margin:0">Last run ${esc(new Date(V.ranAt).toLocaleString())} (${esc(V.trigger)}). ${esc(V.summary)} Claude tokens used: ${V.tokensUsed}.</p><div class="table-wrap"><table class="data-table"><thead><tr><th>Check</th><th>Result</th><th>Detail</th><th>How to fix</th></tr></thead><tbody>${V.checks.map((c) => `<tr><td>${esc(c.name)}</td><td><span class="st ${c.status === "pass" ? "st-available" : c.status === "warn" ? "st-unavailable" : "st-restricted"}">${c.status}</span></td><td>${esc(c.detail)}</td><td>${esc(c.fix || "")}</td></tr>`).join("")}</tbody></table></div><p class="hint">It runs at 5 a.m. when the local server is running and the computer is awake. Otherwise it runs the first time you open O.T.T.E.R. after 5 a.m.</p>` : `<p class="dempty">Not run yet.</p>`;
+  page.querySelector("#runCheck").onclick = () => runMorningCheck("manual", { post: false });
   const ask = page.querySelector("#askIdeas");
   if (ask) ask.onclick = () => {
     const u = D.usage;
@@ -1225,7 +1355,7 @@ function wire() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && speaker.speaking) speaker.stop(); });
   $("stopBtn").onclick = () => busy?.abort();
   const input = $("input");
-  input.oninput = () => { autosize(); if (!busy) setActivity(input.value.trim() ? "listening" : "idle"); };
+  input.oninput = () => { autosize(); updateRouteHint(); if (!busy) setActivity(input.value.trim() ? "listening" : "idle"); };
   input.onblur = () => { if (!busy && otter.state === "listening") setActivity("idle"); };
   input.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(input.value); } };
   input.addEventListener("paste", (e) => {
@@ -1287,6 +1417,8 @@ async function boot() {
   renderVoicePop();
   renderGrowCount();
   if (currentView === "chat" && !current.messages.length) renderConversation();
+  // Morning check: the server runs it at 5 a.m.; the page runs it at first open after 5 a.m.
+  if (D.settings.onboarded && needsCatchUp(D.lastVerify?.ranAt)) await runMorningCheck("first open after 5 a.m.");
   if (!D.settings.onboarded) runOnboarding({ onDone: launchChecks });
   else if (!D.settings.voiceOnboarded) runOnboarding({ only: "voice", onDone: launchChecks });
   else launchChecks();

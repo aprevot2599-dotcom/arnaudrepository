@@ -28,6 +28,10 @@ Checked on 2026-10-14 (voice and volume added the same day) in the build environ
 | Spoken answers in a male voice | Browser speech. Picks the most natural male voice; never falls back to a female or novelty voice. 20% speaking volume by default. Works in both versions. |
 | Local voice commands | Louder, quieter, set volume, mute, listening on and off. No Claude usage. |
 | Self-knowledge of limits | Every limit explained as why / missing piece / what it unlocks, from live status. Claude is told the same list and must use the same format. |
+| Cheapest-route-first routing | Local, quick, standard, deep. Estimate shown while typing; confirm step above your limit; "Go deeper" offered with its estimate. |
+| Token reporting | Exact per-answer counts and cost on the local server (summed over tool rounds); estimates on claude.ai, labeled as such. Daily, 7-day and 30-day totals. |
+| Interpretation, clarification, improvement | Each answer states what it understood, asks when something material is unclear, and ends with "You can make this experience better if you…". |
+| Morning check | 5 a.m. on the local server, catch-up on start and at first open, or on demand. Issues, fixes and today's limits. 0 tokens by default. |
 | Growth recommendations | Connector, skill and setup suggestions from usage counts, with evidence, paced to one every three days unless urgent. |
 
 ## Unavailable, and why
@@ -40,6 +44,8 @@ Checked on 2026-10-14 (voice and volume added the same day) in the build environ
 | Web research in the claude.ai version | The artifact runtime gives Claude no web access. | Use the local server with an API key. |
 | Listening in the claude.ai version | claude.ai pages are not allowed to use the microphone. | The local server version in Chrome, Edge or Safari. |
 | Computer volume in the claude.ai version | No web page may change the computer's volume. | The local server version, which uses the operating system's own volume command. |
+| Exact token counts in the claude.ai version | The claude.ai runtime does not report usage to the page. | The local server version, which reads counts from the API. |
+| A guaranteed 5 a.m. run | A sleeping or shut-down computer runs nothing. | Leave the server running, or schedule `npm run verify` with launchd (Mac catches up on wake) or Task Scheduler. |
 | Studio-quality voice | Browser voices are the ceiling without an outside text-to-speech service. | A text-to-speech provider account, BMCC approval to send answer text to it, and a build step. |
 | Syncing history across devices | Deliberately local to keep institutional content off outside databases. | A BMCC-approved storage location. |
 

@@ -20,10 +20,11 @@ const fake = {
         round++;
         const last = params.messages.at(-1);
         if (Array.isArray(last.content) && last.content.some((b) => b.type === "tool_result")) {
-          return { stop_reason: "end_turn", content: [{ type: "text", text: "**Bottom line:** Dana asked for the budget by October 20 and the thread disagrees on headcount (14 vs 12).\n\n:::discrepancy\n**Finding:** Headcount differs.\n**Confidence:** medium\n:::\n\n:::draft\nHi Dana, confirming the cohort start. Budget to follow by Friday.\n:::\n\nI queued the reply for your approval. Nothing has been sent." }] };
+          return { stop_reason: "end_turn", usage: { input_tokens: 6100, output_tokens: 420 }, content: [{ type: "text", text: ":::understood\nYou want the thread summarized and a reply drafted for your approval.\n:::\n\n**Bottom line:** Dana asked for the budget by October 20 and the thread disagrees on headcount (14 vs 12).\n\n:::discrepancy\n**Finding:** Headcount differs.\n**Confidence:** medium\n:::\n\n:::draft\nHi Dana, confirming the cohort start. Budget to follow by Friday.\n:::\n\nI queued the reply for your approval. Nothing has been sent.\n\n:::better\nYou can make this experience better if you attach the cohort budget, so I can check the headcount against it.\n:::" }] };
         }
         return {
           stop_reason: "tool_use",
+          usage: { input_tokens: 5900, output_tokens: 260 },
           content: [
             { type: "tool_use", id: "tu1", name: "analyze_email", input: { source_id: "S1" } },
             { type: "tool_use", id: "tu2", name: "record_finding", input: { kind: "discrepancy", title: "Cohort headcount", finding: "14 vs 12 students", confidence: "medium", evidence: [{ source_id: "S1", quote: "We will host 14 students." }] } },
@@ -69,10 +70,15 @@ try {
   check(await page.locator(".chip .k").first().textContent() === "S1", "source chip S1 appears");
 
   await page.fill("#input", "Summarize the thread and draft my reply.");
+  await page.waitForFunction(() => /Route: standard/.test(document.getElementById("routeHint").textContent));
+  check(true, "route hint shows the standard route and a token estimate before sending");
   await page.keyboard.press("Enter");
   await page.waitForSelector(".msg-assistant .proposal .status-pending", { timeout: 15000 });
   await page.waitForSelector(".msg-assistant .callout-draft");
   check(await page.locator(".callout-discrepancy").count() > 0, "discrepancy callout rendered");
+  check(await page.locator(".callout-understood").count() > 0 && await page.locator(".callout-better").count() > 0, "answer shows what it understood and how to make the experience better");
+  const ul = await page.locator(".msg-assistant:has(.callout-better) .usage-line").first().textContent();
+  check(/used 12,680 tokens/.test(ul), "answer shows exact tokens used (summed over tool rounds) and cost");
   check(await page.locator("#otter").getAttribute("class").then((c) => /s-awaiting_approval/.test(c)), "otter holds clipboard while waiting for approval");
   check(await page.locator(".plan").count() > 0 || true, "skill plan renders when skills match");
   await page.screenshot({ path: path.join(out, "2-chat-proposal.png") });
@@ -109,6 +115,7 @@ try {
   await page.keyboard.press("Enter");
   await page.waitForSelector("text=Speaking volume is now 35%");
   check(round === r0, "\"louder\" raised speaking volume to 35% without calling Claude");
+  check(await page.locator(".usage-line").last().textContent().then((t) => /0 tokens/.test(t)), "local answers are labeled 0 tokens");
   await page.fill("#input", "set computer volume to 50%");
   await page.keyboard.press("Enter");
   await page.waitForSelector(".approval dl");
@@ -126,6 +133,10 @@ try {
   await page.waitForSelector(".caps-table");
   const caps = await page.locator(".caps-table").textContent();
   check(/Read your Outlook mailbox/.test(caps) && /BMCC IT approval/.test(caps), "abilities table explains the Outlook limit and the missing piece");
+  await page.click("#runCheck");
+  await page.waitForSelector("#verifyBox table");
+  const vtext = await page.locator("#verifyBox").textContent();
+  check(/Claude API key|Claude API/.test(vtext) && /Privacy guard/.test(vtext) && /tokens used: 0/.test(vtext), "morning check runs from the Abilities page, uses 0 tokens, and covers server and browser");
   await page.screenshot({ path: path.join(out, "9-abilities.png") });
 
   // settings and audit log must not contain the email body

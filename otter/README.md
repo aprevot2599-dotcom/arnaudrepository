@@ -23,7 +23,7 @@ npm install
 export ANTHROPIC_API_KEY=sk-ant-...      # never put this in the browser or a file in the repo
 npm start                                 # http://127.0.0.1:4317
 ```
-Optional: `OTTER_MODEL` (default `claude-opus-5-5`), `OTTER_EFFORT` (default `medium`), `OTTER_FALLBACKS=off` to disable the server-side refusal fallback (on by default), `OTTER_SKILLS_DIR` to add skill folders, `PORT`.
+Optional: `OTTER_MODEL` (default `claude-opus-5-5`), `OTTER_QUICK_MODEL` (quick route; default same as `OTTER_MODEL`), `OTTER_EFFORT` (default `medium`, used when the router sends none), `OTTER_VERIFY_LIVE=1` (adds a tiny live Claude call to the morning check), `OTTER_FALLBACKS=off` to disable the server-side refusal fallback (on by default), `OTTER_SKILLS_DIR` to add skill folders, `PORT`.
 
 The server listens on 127.0.0.1 only, requires a per-launch token on every API call, rejects requests from other web origins, and refuses any request containing passwords, SSNs, card numbers or API keys even if the browser sent it.
 
@@ -41,6 +41,45 @@ O.T.T.E.R. opens with five short setup questions: whether BMCC permits sending n
 - **What it can't do, in three parts.** Ask for something it can't do and it answers with *Why I can't*, *The missing piece*, and *With that piece, I could*. The **Abilities & growth** page lists every capability with its live status; statuses change as you add permissions, connectors or the local server.
 - **Recommendations.** O.T.T.E.R. counts what you ask for and where it gets stuck (counts only, never message content) and suggests connectors, skills and setup changes, each with the evidence that triggered it. It raises one in chat at most every three days, or right away for a high-priority one. "Not for me" dismisses a suggestion for good; **Ask Claude for more ideas** sends the counts, not your conversations, to Claude for more ideas.
 
+## Token-aware routing
+Every request takes the cheapest route that can do the job, and you see the number before and after.
+
+| Route | When | Typical size |
+|---|---|---|
+| Local | Commands, small talk, "can you…" questions about things it can't do, the morning check, everything when no Claude is connected | 0 tokens |
+| Quick | Short questions with no sources; low effort, last 4 turns, 3 tools | about 4-6k tokens |
+| Standard | Attached sources, email or discrepancy work, decisions, your skills; medium effort | about 8-25k tokens |
+| Deep | Only when you ask for depth or press **Go deeper**; high effort, web research on the local server | about 25-80k tokens |
+
+- **Before sending:** the line under the message box shows the route and estimate as you type. Requests above your limit (Settings > Data, default 15k tokens) stop and offer a cheaper route.
+- **After:** each answer shows its route and tokens. The local server version shows exact counts from the API, summed over every tool round, with the dollar cost. The claude.ai version shows an estimate, because claude.ai doesn't report counts; that usage draws on your plan's limits rather than a bill.
+- **Lowest first:** a decision or research question runs on standard first. If more would help, the answer offers **Go deeper** with its estimate. The dashboard's Claude usage panel totals today, 7 days and 30 days.
+- Estimates assume about 4 characters per token and can be off by about 25%. The fixed overhead (instructions and tools, about 4k tokens) was measured from the real prompt on 2026-10-14.
+
+## How it talks with you
+Every Claude answer opens with **What I understood** (including how it read dictation slips like a spoken "period"), asks up to two clarifying questions when something material is unclear (on the quick route it asks and stops, to save tokens), answers bottom line first, and closes with one **"You can make this experience better if you…"** suggestion.
+
+## Morning check (5 a.m.)
+O.T.T.E.R. tests itself and reports issues, how to fix each one, and today's limits given your current setup. It uses **0 Claude tokens** unless you turn on the live test (`OTTER_VERIFY_LIVE=1`, about 100-300 tokens).
+
+Checks: Claude API key and connection (a free model lookup), skill inventory (new or missing skills since yesterday), the 16 approval and privacy fail-safe tests, computer volume control, report storage, Claude connection and approval in the page, local storage, voice, listening, stale approvals, expired knowledge, and a privacy-guard self-test.
+
+When it runs:
+1. At 5:00 a.m. local time while `npm start` is running and the computer is awake.
+2. If the server starts after a missed 5 a.m., it runs immediately (catch-up).
+3. The first time you open O.T.T.E.R. after 5 a.m., the page runs its own checks, pulls the server report, and posts the morning report in chat.
+4. Any time: **Abilities & growth > Morning check > Run now**, or type "morning check".
+
+To run it at 5 a.m. without leaving the server open, schedule `npm run verify` (set `ANTHROPIC_API_KEY` in the scheduled environment):
+- **macOS** (runs on wake if the Mac slept through 5 a.m.): create `~/Library/LaunchAgents/edu.bmcc.otter.verify.plist` with `ProgramArguments` = `/usr/local/bin/node`, `/path/to/otter/scripts/verify.js` and `StartCalendarInterval` Hour 5 Minute 0, then `launchctl load` it.
+- **Windows**: `schtasks /Create /SC DAILY /ST 05:00 /TN "OTTER morning check" /TR "cmd /c cd /d C:\path\to\otter && node scripts\verify.js"`, then in Task Scheduler tick "Run task as soon as possible after a scheduled start is missed".
+- **Linux**: `crontab -e`, add `0 5 * * * cd /path/to/otter && node scripts/verify.js >> data/local/verify.log 2>&1`.
+
+Reports are kept for 30 days in `data/local/verification/` (git-ignored).
+
+## Decisions
+Every open decision, with my recommendation and the current default: [DECISIONS.md](DECISIONS.md).
+
 ## Daily use
 - **Chat.** Enter sends, Shift+Enter adds a line. Answers come bottom line first, with labeled cards for recommendations, discrepancies, opportunities, risks, questions and drafts. Long answers collapse; every answer has Copy.
 - **Add source (+).** Paste or upload an email thread or document you are authorized to analyze. A privacy scan runs as you paste: passwords, SSNs and card numbers cannot be added, student-record details stay local unless FERPA processing is authorized, and contact details are replaced with placeholders before sending. Pasting a long email into the message box moves it into a source automatically.
@@ -56,8 +95,9 @@ The model can call exactly six tools (plus web search in local-server mode when 
 
 ## Tests
 ```bash
-npm test          # 30 tests: the 15 required fail-safes, email parsing, server boundaries, voice commands,
-                  # volume control, self-knowledge and recommendations
+npm test          # 38 tests: the 15 required fail-safes, email parsing, server boundaries, voice commands,
+                  # volume control, self-knowledge, recommendations, routing, token estimates, morning check
+npm run verify    # the morning check, once, from the command line
 npm run test:ui   # browser smoke test (needs Playwright): onboarding, voice setup, launch volume prompt, voice
                   # commands, approval flow, abilities page, privacy block, phone layout
 ```
@@ -78,6 +118,10 @@ core/agent.js             system prompt, model tools, transports (claude.ai, API
 core/capabilities.js      what O.T.T.E.R. can and can't do right now, and why
 core/advisor.js           usage counts -> connector, skill and setup recommendations
 core/voicecmd.js          local volume, voice and listening commands
+core/router.js            cheapest-route-first routing and token estimates
+core/verify.js            morning check: schedule, browser checks, report
+lib/verify-server.js      morning check: server checks, scheduler, report storage
+scripts/verify.js         morning check for an operating-system scheduler
 lib/sysvolume.js          computer volume through the operating system (local server)
 public/                   interface: index.html, styles.css, app.js, otter.js (avatar), voice.js, markdown.js, store.js
 scripts/discover-skills.js  skill discovery -> data/skills.json

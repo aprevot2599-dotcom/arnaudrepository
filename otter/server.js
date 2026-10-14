@@ -12,10 +12,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { scanSensitive } from "./core/privacy.js";
 import { discover, parseFrontmatter } from "./scripts/discover-skills.js";
 import { detectBackend, getVolume, setVolume, defaultRunner } from "./lib/sysvolume.js";
+import { serverChecks, saveReport, loadReport, scheduleDaily } from "./lib/verify-server.js";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const MODEL = process.env.OTTER_MODEL || "claude-opus-5-5";
 const EFFORT = process.env.OTTER_EFFORT || "medium";
+const QUICK_MODEL = process.env.OTTER_QUICK_MODEL || MODEL; // set to claude-haiku-5-5 for a cheaper quick route
 const USE_FALLBACKS = process.env.OTTER_FALLBACKS !== "off";
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml" };
@@ -44,9 +46,16 @@ async function readJson(req, limit = 4 * 1024 * 1024) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
-export function createServer({ client = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN ? new Anthropic() : null, port = 4317, token = crypto.randomBytes(24).toString("hex"), volumeBackend = detectBackend(), volumeRunner = defaultRunner } = {}) {
+export function createServer({ client = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN ? new Anthropic() : null, port = 4317, token = crypto.randomBytes(24).toString("hex"), volumeBackend = detectBackend(), volumeRunner = defaultRunner, root = ROOT, checksOptions = {} } = {}) {
   let skills = null;
   const skillIndex = () => (skills ||= discover());
+  let verifying = null;
+  const runVerification = async (trigger) => {
+    verifying ||= serverChecks({ root, client, model: MODEL, volumeBackend, volumeRunner, live: process.env.OTTER_VERIFY_LIVE === "1", ...checksOptions })
+      .then((r) => { const report = { ...r, trigger }; try { saveReport(root, report); } catch {} return report; })
+      .finally(() => (verifying = null));
+    return verifying;
+  };
   const allowedOrigins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
 
   const server = http.createServer(async (req, res) => {
@@ -61,6 +70,7 @@ export function createServer({ client = process.env.ANTHROPIC_API_KEY || process
           return send(res, 200, {
             engine: "server",
             model: MODEL,
+            quickModel: QUICK_MODEL,
             apiKey: !!client,
             webSearch: !!client,
             chromeBridge: false,
@@ -85,6 +95,9 @@ export function createServer({ client = process.env.ANTHROPIC_API_KEY || process
           }
         }
 
+        if (url.pathname === "/api/verify/latest") return send(res, 200, { report: loadReport(root) });
+        if (url.pathname === "/api/verify/run" && req.method === "POST") return send(res, 200, { report: await runVerification("manual") });
+
         if (url.pathname === "/api/skills") return send(res, 200, { skills: skillIndex().map(({ path: p, ...s }) => s) });
 
         const m = url.pathname.match(/^\/api\/skills\/([a-z0-9-]+)\/instructions$/);
@@ -105,16 +118,19 @@ export function createServer({ client = process.env.ANTHROPIC_API_KEY || process
           if (hard.length) return send(res, 422, { error: `Blocked by the server privacy guard: ${[...new Set(hard.map((f) => f.label))].join(", ")}.`, code: "privacy_block" });
           const tools = Array.isArray(body.tools) ? body.tools.slice(0, 20) : [];
           if (body.webSearch) tools.push({ type: "web_search_20260209", name: "web_search", max_uses: 6 });
+          // The browser's router picks effort and, if you configured one, a cheaper quick-route model.
+          const effort = ["low", "medium", "high"].includes(body.effort) ? body.effort : EFFORT;
+          const model = [MODEL, QUICK_MODEL].includes(body.model) ? body.model : MODEL;
           const params = {
-            model: MODEL,
-            max_tokens: 16000,
+            model,
+            max_tokens: effort === "low" ? 4000 : 16000,
             thinking: { type: "adaptive" },
-            output_config: { effort: EFFORT },
+            output_config: { effort },
             system: String(body.system || ""),
             messages: body.messages,
             tools,
           };
-          if (USE_FALLBACKS) Object.assign(params, { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });
+          if (USE_FALLBACKS && model !== "claude-haiku-5-5") Object.assign(params, { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });
           try {
             const msg = await client.beta.messages.create(params);
             return send(res, 200, { content: msg.content, stop_reason: msg.stop_reason, model: msg.model, usage: msg.usage });
@@ -146,7 +162,7 @@ export function createServer({ client = process.env.ANTHROPIC_API_KEY || process
       if (!e.status) console.error(e);
     }
   });
-  return { server, token, port };
+  return { server, token, port, runVerification };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
@@ -159,8 +175,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     console.log(`Discovered ${found.length} skills on this computer.`);
   }
   const port = +process.env.PORT || 4317;
-  const { server } = createServer({ port });
+  const { server, runVerification } = createServer({ port });
   server.listen(port, "127.0.0.1", () => {
+    scheduleDaily(async (trigger) => { const r = await runVerification(trigger); console.log(`Morning check (${trigger}): ${r.checks.filter((c) => c.status !== "pass").length} issue(s), ${r.tokensUsed} Claude tokens used.`); }, { last: loadReport(ROOT)?.ranAt });
     console.log(`O.T.T.E.R. is running at http://127.0.0.1:${port}`);
     console.log(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN ? `Claude API: connected (${MODEL}, effort ${EFFORT})` : "Claude API: no ANTHROPIC_API_KEY set. The app runs with built-in analyzers only.");
   });
