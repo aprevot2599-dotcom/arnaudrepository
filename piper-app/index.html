@@ -73,7 +73,8 @@ details.nb:not([open]) > summary::after { content: "▸"; }
 .hint, .privacy { font-size: .8em; color: var(--ink-soft); margin: 0; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .status { font-size: .85em; color: var(--ink-soft); min-height: 1.2em; }
-.status.ok { color: var(--ok); }
+.status.ok, .hint.ok { color: var(--ok); }
+.hint.warn { color: var(--ink); background: var(--kid-bubble); border-radius: 8px; padding: 6px 8px; }
 
 /* Buttons */
 button, .btnlike { font: inherit; cursor: pointer; border-radius: 999px; border: 2px solid var(--ink); background: var(--paper); color: var(--ink); padding: 6px 14px; font-size: .9rem; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
@@ -368,6 +369,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
       <label for="voiceSel">Voice<select id="voiceSel"></select></label>
       <label for="voiceRate">Speed<input type="range" id="voiceRate" min="0.75" max="1.2" step="0.05" value="0.95"></label>
       <div class="row"><button type="button" id="testVoice">Test voice</button></div>
+      <p class="hint" id="voiceQuality" role="status"></p>
       <p class="hint">Voices come from this device. Piper picks the most natural one she finds; choose another here if you like.</p>
     </div>
   </aside>
@@ -866,9 +868,12 @@ let voices = [], voice = null, rate = 0.95, autoTalk = false;
 const ROBOTIC = /Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Good News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Junior|Ralph|Fred|Kathy|Grandma|Grandpa|Eddy|Flo|Reed|Rocko|Sandy|Shelley|espeak/i;
 const WOMEN = /Aria|Jenny|Samantha|Ava|Emma|Zoe|Michelle|Ana\b|Sonia|Libby|Natasha|Clara|Allison|Susan|Joanna|Salli|Karen|Moira|Tessa|Fiona|Serena|Victoria|Nicky|Google US English|Female/i;
 const MEN = /Guy|Andrew|Brian|Evan|Nathan|Daniel|Alex\b|Tom\b|Aaron|Arthur|Oliver|Ryan|Christopher|Eric|Roger|Steffan|Male/i;
+const BEST = /(Ava|Emma|Jenny|Aria|Michelle|Ana)(Multilingual)? Online \(Natural\)|Ava \(Premium\)|Zoe \(Premium\)|Samantha \(Enhanced\)|Ava \(Enhanced\)|Allison \(Enhanced\)|Susan \(Enhanced\)/i;
+function isNatural(v) { return !!v && (/natural|neural|premium|enhanced/i.test(v.name)); }
 function scoreVoice(v) {
   if (!/^en/i.test(v.lang)) return -1;
   let s = 10;
+  if (BEST.test(v.name)) s += 12;
   if (/natural|neural/i.test(v.name)) s += 8;
   if (/premium|enhanced|siri/i.test(v.name)) s += 6;
   if (/online/i.test(v.name)) s += 3;
@@ -888,6 +893,27 @@ function loadVoices() {
   const idx = Math.max(0, voices.findIndex(v => v.name === load("piper-voice")));
   voice = voices[idx] || null;
   sel.value = String(idx);
+  voiceNote();
+}
+function voiceNote() {
+  const el = $("voiceQuality");
+  const ua = navigator.userAgent;
+  let how;
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && "ontouchend" in document)) how = "On this iPhone or iPad: Settings, Accessibility, Spoken Content, Voices, English, then download Ava (Premium) or Zoe (Premium). Reload this page and pick it.";
+  else if (/Macintosh/.test(ua)) how = "On this Mac: System Settings, Accessibility, Spoken Content, System voice, Manage Voices, then download Ava (Premium) or Zoe (Premium). Reload this page and pick it.";
+  else if (/Windows/.test(ua) && !/Edg\//.test(ua)) how = "On Windows, open this page in Microsoft Edge instead. Edge has free natural voices such as Ava, Emma and Jenny Online (Natural).";
+  else if (/Windows/.test(ua)) how = "Pick a voice with Online (Natural) in its name, such as Ava or Jenny.";
+  else if (/CrOS|Android/.test(ua)) how = "Pick a Google voice. For a more natural one, use a Windows computer with Edge or an iPad with a Premium voice.";
+  else how = "Try Microsoft Edge, or an iPad or Mac with a Premium voice downloaded.";
+  if (isNatural(voice)) { el.textContent = "✓ Natural voice selected."; el.className = "hint ok"; }
+  else { el.textContent = "This voice may sound robotic. " + how; el.className = "hint warn"; }
+}
+const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const ORD = { 2: "half", 3: "third", 4: "fourth", 5: "fifth", 6: "sixth", 7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth", 11: "eleventh", 12: "twelfth" };
+function fractionWords(a, b) {
+  if (!ORD[b] || a > 12) return a + " over " + b;
+  const name = a === 1 ? ORD[b] : (b === 2 ? "halves" : ORD[b] + "s");
+  return ONES[a] + " " + name;
 }
 function forSpeech(t) {
   return t
@@ -896,10 +922,14 @@ function forSpeech(t) {
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "")
     .replace(/(\w)\^2\b/g, "$1 squared").replace(/(\w)\^3\b/g, "$1 cubed").replace(/(\w)\^\(?(-?\w+)\)?/g, "$1 to the power of $2")
     .replace(/sqrt\(([^)]*)\)/gi, "the square root of $1")
+    .replace(/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/g, (m, a, b) => fractionWords(+a, +b))
     .replace(/(\d)\s*\/\s*(\d)/g, "$1 over $2")
+    .replace(/\.\.\./g, ",")
+    .replace(/\s*:\s*$/gm, ".")
     .replace(/([\d)a-z])\s*[*×]\s*(?=[\d(a-z])/gi, "$1 times ")
     .replace(/([\w)])\s+[-−]\s+(?=[\w(])/g, "$1 minus ")
     .replace(/(^|[\s(])[-−](?=\d)/g, "$1negative ")
+    .replace(/\s\+\s/g, " plus ")
     .replace(/\s=\s/g, " equals ").replace(/\s≠\s/g, " does not equal ")
     .replace(/\s<\s/g, " is less than ").replace(/\s>\s/g, " is greater than ")
     .replace(/\s≤\s/g, " is less than or equal to ").replace(/\s≥\s/g, " is greater than or equal to ")
@@ -917,7 +947,7 @@ function speak(text, wrap) {
     parts.forEach((p, i) => {
       const u = new SpeechSynthesisUtterance(p);
       if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = "en-US";
-      u.rate = rate; u.pitch = 1.05;
+      u.rate = rate; u.pitch = 1;
       if (i === parts.length - 1) u.onend = u.onerror = () => { speakingNow = false; setTalking(false); if (wrap) wrap.classList.remove("speaking"); };
       speechSynthesis.speak(u);
     });
@@ -931,7 +961,7 @@ function setTalk(on) {
   if (!on) { try { speechSynthesis.cancel(); } catch (e) {} }
 }
 $("talkMode").onclick = () => setTalk(!autoTalk);
-$("voiceSel").onchange = () => { voice = voices[+$("voiceSel").value] || null; if (voice) store("piper-voice", voice.name); };
+$("voiceSel").onchange = () => { voice = voices[+$("voiceSel").value] || null; if (voice) store("piper-voice", voice.name); voiceNote(); speak("Hi, I'm Piper. How does this voice sound?", null); };
 $("voiceRate").oninput = () => { rate = +$("voiceRate").value; store("piper-rate", String(rate)); };
 $("testVoice").onclick = () => { speak("Hi! I'm Piper. Three fourths of a pizza is a lot of pizza, even for me.", null); setMood("happy", 3000); };
 if ("speechSynthesis" in window) {

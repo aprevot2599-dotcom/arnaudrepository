@@ -6,6 +6,7 @@ An animated, emotionally expressive math teacher for grades 6 to 8, built on Cla
 
 **App:** https://claude.ai/artifact/7hWNGJQnaybRBBqh1u2Nnf (private until shared)
 **Full setup and use guide:** [INSTRUCTIONS.md](INSTRUCTIONS.md)
+**Natural voice upgrade plan:** [VOICE-UPGRADE.md](VOICE-UPGRADE.md)
 
 ## What Piper does
 - Opens with a get-to-know-you conversation (nickname, grade, interests, how math feels, a time math went well, what helps, voice on or off) and saves it to her notebook

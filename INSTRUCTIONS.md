@@ -40,6 +40,8 @@ The first time Piper answers, claude.ai asks permission for the page to use Clau
    - iPhone, iPad, Mac: go to Settings, Accessibility, Spoken Content (Mac: System Settings, Accessibility, Spoken Content), Voices, English, and download an **Enhanced** or **Premium** voice such as Ava or Samantha. Reload the page, then pick it.
    - Chromebook or Android: pick a "Google" voice.
 3. Any single answer can be replayed with **Read aloud** under it.
+4. If a yellow notice appears under the voice list, the chosen voice is likely to sound robotic; follow the fix it shows for that device. Each time you choose a voice, Piper says a short sentence so you can compare.
+5. For a human-quality voice on every device, see [VOICE-UPGRADE.md](VOICE-UPGRADE.md).
 
 **The learner talking**
 The page cannot use the microphone directly, so the learner speaks through the device's dictation:
