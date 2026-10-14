@@ -74,6 +74,12 @@ details.nb:not([open]) > summary::after { content: "▸"; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .status { font-size: .85em; color: var(--ink-soft); min-height: 1.2em; }
 .status.ok, .hint.ok { color: var(--ok); }
+.wizard { display: grid; gap: 10px; background: var(--sky); border-radius: 12px; padding: 12px; }
+.wiz-step { margin: 0; font-size: .88em; }
+.wiz-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.wiz-list li { display: grid; gap: 6px; background: var(--paper); border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: .88em; }
+.wiz-list li.chosen { border-color: var(--ok); }
+.wiz-list .tag { font-size: .8em; color: var(--ok); font-weight: 700; }
 .hint.warn { color: var(--ink); background: var(--kid-bubble); border-radius: 8px; padding: 6px 8px; }
 
 /* Buttons */
@@ -368,7 +374,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
       <h2>Piper's voice</h2>
       <label for="voiceSel">Voice<select id="voiceSel"></select></label>
       <label for="voiceRate">Speed<input type="range" id="voiceRate" min="0.75" max="1.2" step="0.05" value="0.95"></label>
-      <div class="row"><button type="button" id="testVoice">Test voice</button></div>
+      <div class="row"><button type="button" id="testVoice">Test voice</button><button type="button" id="wizBtn" aria-expanded="false" aria-controls="voiceWizard">Find her best voice</button></div>
+      <div class="wizard" id="voiceWizard" hidden>
+        <p class="wiz-step"><strong>1. Get a better voice on this device</strong><br><span id="wizHow"></span></p>
+        <p class="wiz-step"><strong>2. Listen and choose</strong><br>Each voice says the same sentence in Piper's calm, caring and cheering tones.</p>
+        <ul class="wiz-list" id="wizList"></ul>
+        <p class="wiz-step"><strong>3. Set the speed</strong><br>About 0.9 sounds warm and is easier to follow.</p>
+      </div>
       <p class="hint" id="voiceQuality" role="status"></p>
       <p class="hint">Voices come from this device. Piper picks the most natural one she finds; choose another here if you like.</p>
     </div>
@@ -895,8 +907,7 @@ function loadVoices() {
   sel.value = String(idx);
   voiceNote();
 }
-function voiceNote() {
-  const el = $("voiceQuality");
+function deviceHelp() {
   const ua = navigator.userAgent;
   let how;
   if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && "ontouchend" in document)) how = "On this iPhone or iPad: Settings, Accessibility, Spoken Content, Voices, English, then download Ava (Premium) or Zoe (Premium). Reload this page and pick it.";
@@ -905,6 +916,11 @@ function voiceNote() {
   else if (/Windows/.test(ua)) how = "Pick a voice with Online (Natural) in its name, such as Ava or Jenny.";
   else if (/CrOS|Android/.test(ua)) how = "Pick a Google voice. For a more natural one, use a Windows computer with Edge or an iPad with a Premium voice.";
   else how = "Try Microsoft Edge, or an iPad or Mac with a Premium voice downloaded.";
+  return how;
+}
+function voiceNote() {
+  const el = $("voiceQuality");
+  const how = deviceHelp();
   if (isNatural(voice)) { el.textContent = "✓ Natural voice selected."; el.className = "hint ok"; }
   else { el.textContent = "This voice may sound robotic. " + how; el.className = "hint warn"; }
 }
@@ -935,34 +951,85 @@ function forSpeech(t) {
     .replace(/\s≤\s/g, " is less than or equal to ").replace(/\s≥\s/g, " is greater than or equal to ")
     .replace(/π/g, "pi");
 }
-function speak(text, wrap) {
-  if (!("speechSynthesis" in window)) return;
-  try {
-    speechSynthesis.cancel();
-    document.querySelectorAll(".msg.speaking").forEach(m => m.classList.remove("speaking"));
-    const parts = forSpeech(text).split(/(?<=[.!?])\s+|\n+/).map(x => x.trim()).filter(Boolean);
-    if (!parts.length) return;
-    speakingNow = true; setTalking(true);
-    if (wrap) wrap.classList.add("speaking");
-    parts.forEach((p, i) => {
-      const u = new SpeechSynthesisUtterance(p);
-      if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = "en-US";
-      u.rate = rate; u.pitch = 1;
-      if (i === parts.length - 1) u.onend = u.onerror = () => { speakingNow = false; setTalking(false); if (wrap) wrap.classList.remove("speaking"); };
-      speechSynthesis.speak(u);
-    });
-  } catch (e) { speakingNow = false; setTalking(false); }
+// Sentences are spoken one at a time with a short breath between them, and the tone follows Piper's mood.
+const MOOD_VOICE = {
+  calm: [1, 1], listening: [1, 1], hello: [1.02, 1.04], happy: [1.03, 1.05], celebrate: [1.06, 1.1],
+  empathy: [0.88, 0.96], encourage: [0.98, 1.02], thinking: [0.93, 1], curious: [1, 1.04], surprised: [1.04, 1.08],
+};
+let speakToken = 0, speakQueue = 0;
+function stopSpeaking() {
+  speakToken++; speakQueue = 0;
+  try { speechSynthesis.cancel(); } catch (e) {}
+  speakingNow = false; setTalking(false);
+  document.querySelectorAll(".msg.speaking").forEach(m => m.classList.remove("speaking"));
 }
-setInterval(() => { if (speakingNow && "speechSynthesis" in window && !speechSynthesis.speaking && !speechSynthesis.pending) { speakingNow = false; setTalking(false); document.querySelectorAll(".msg.speaking").forEach(m => m.classList.remove("speaking")); } }, 700);
+function speak(text, wrap, opts) {
+  if (!("speechSynthesis" in window)) return;
+  stopSpeaking();
+  const token = speakToken;
+  const parts = forSpeech(text).split(/(?<=[.!?])\s+|\n+/).map(x => x.trim()).filter(Boolean);
+  if (!parts.length) return;
+  const useVoice = (opts && opts.voice) || voice;
+  const [rMul, pitch] = MOOD_VOICE[(opts && opts.mood) || svgEl.dataset.mood] || [1, 1];
+  speakingNow = true; speakQueue = parts.length; setTalking(true);
+  if (wrap) wrap.classList.add("speaking");
+  const next = (i) => {
+    if (token !== speakToken) return;
+    if (i >= parts.length) { speakingNow = false; speakQueue = 0; setTalking(false); if (wrap) wrap.classList.remove("speaking"); return; }
+    const u = new SpeechSynthesisUtterance(parts[i]);
+    if (useVoice) { u.voice = useVoice; u.lang = useVoice.lang; } else u.lang = "en-US";
+    u.rate = Math.max(.5, Math.min(1.6, rate * rMul)); u.pitch = pitch;
+    u.onstart = () => { if (token === speakToken) setTalking(true); };
+    u.onend = u.onerror = () => {
+      if (token !== speakToken) return;
+      speakQueue = parts.length - i - 1;
+      setTalking(false);
+      const pause = /[?!]$/.test(parts[i]) ? 320 : 240;
+      setTimeout(() => next(i + 1), pause);
+    };
+    try { speechSynthesis.speak(u); } catch (e) { stopSpeaking(); }
+  };
+  next(0);
+}
+setInterval(() => { if (speakingNow && speakQueue === 0 && "speechSynthesis" in window && !speechSynthesis.speaking && !speechSynthesis.pending) stopSpeaking(); }, 900);
 function setTalk(on) {
   autoTalk = on;
   $("talkMode").setAttribute("aria-pressed", String(on));
   store("piper-talk", on ? "1" : "0");
-  if (!on) { try { speechSynthesis.cancel(); } catch (e) {} }
+  if (!on) stopSpeaking();
 }
 $("talkMode").onclick = () => setTalk(!autoTalk);
 $("voiceSel").onchange = () => { voice = voices[+$("voiceSel").value] || null; if (voice) store("piper-voice", voice.name); voiceNote(); speak("Hi, I'm Piper. How does this voice sound?", null); };
 $("voiceRate").oninput = () => { rate = +$("voiceRate").value; store("piper-rate", String(rate)); };
+const SAMPLE = [
+  ["calm", "Hi, I'm Piper. Let's look at this problem together."],
+  ["empathy", "That sounds really frustrating. It makes sense, this one is tricky."],
+  ["celebrate", "You did it! Three fourths was exactly right."],
+];
+function drawWizard() {
+  $("wizHow").textContent = deviceHelp();
+  const list = $("wizList"); list.innerHTML = "";
+  const top = voices.slice(0, 4);
+  if (!top.length) { const li = document.createElement("li"); li.textContent = "No English voices found yet. Reload the page in a few seconds."; list.append(li); return; }
+  top.forEach((v) => {
+    const li = document.createElement("li");
+    if (voice && v.name === voice.name) li.className = "chosen";
+    const name = document.createElement("span");
+    name.textContent = v.name.replace(/^Microsoft\s+/, "");
+    if (isNatural(v)) { const t = document.createElement("span"); t.className = "tag"; t.textContent = " Natural"; name.append(t); }
+    const row = document.createElement("div"); row.className = "row";
+    const listen = document.createElement("button"); listen.type = "button"; listen.textContent = "▶ Listen";
+    listen.onclick = () => { let k = 0; const play = () => { if (k >= SAMPLE.length) { setMood("calm"); return; } const [m, t] = SAMPLE[k++]; setMood(m); speak(t, null, { voice: v, mood: m }); const wait = setInterval(() => { if (!speakingNow) { clearInterval(wait); setTimeout(play, 350); } }, 200); }; play(); };
+    const choose = document.createElement("button"); choose.type = "button"; choose.className = "primary"; choose.textContent = "Choose";
+    choose.onclick = () => { voice = v; store("piper-voice", v.name); $("voiceSel").value = String(voices.indexOf(v)); voiceNote(); drawWizard(); stopSpeaking(); setMood("happy", 2500); };
+    row.append(listen, choose); li.append(name, row); list.append(li);
+  });
+}
+$("wizBtn").onclick = () => {
+  const w = $("voiceWizard"), open = w.hidden;
+  w.hidden = !open; $("wizBtn").setAttribute("aria-expanded", String(open));
+  if (open) drawWizard(); else stopSpeaking();
+};
 $("testVoice").onclick = () => { speak("Hi! I'm Piper. Three fourths of a pizza is a lot of pizza, even for me.", null); setMood("happy", 3000); };
 if ("speechSynthesis" in window) {
   loadVoices();

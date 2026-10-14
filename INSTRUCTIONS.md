@@ -41,7 +41,9 @@ The first time Piper answers, claude.ai asks permission for the page to use Clau
    - Chromebook or Android: pick a "Google" voice.
 3. Any single answer can be replayed with **Read aloud** under it.
 4. If a yellow notice appears under the voice list, the chosen voice is likely to sound robotic; follow the fix it shows for that device. Each time you choose a voice, Piper says a short sentence so you can compare.
-5. For a human-quality voice on every device, see [VOICE-UPGRADE.md](VOICE-UPGRADE.md).
+5. Click **Find her best voice** for a guided setup: it shows the steps for this device, then lets you hear the top voices say the same lines in Piper's calm, caring and cheering tones. Click **Choose** on the one you like.
+6. Piper's tone follows her face: slower and softer when she shows empathy, brighter when she celebrates, with a short breath between sentences.
+7. For a human-quality voice on every device, see [VOICE-UPGRADE.md](VOICE-UPGRADE.md).
 
 **The learner talking**
 The page cannot use the microphone directly, so the learner speaks through the device's dictation:
