@@ -8,6 +8,7 @@ import { evaluateOutbound, wrapUntrusted, detectInjection, redact } from "./priv
 import { analyzeEmail, findDiscrepancies, verifyEvidence, searchKnowledge } from "./analysis.js";
 import { planRequest, planSummary, handoffBrief } from "./orchestrator.js";
 import { ACTION_TYPES, SecurityError, skillStatus, SYSTEMS } from "./security.js";
+import { capabilitySummary, matchCapabilities, explain } from "./capabilities.js";
 
 export const DRAFT_TYPES = new Set(["send_email", "reply_email", "forward_email", "post_content", "edit_document"]);
 
@@ -25,7 +26,7 @@ export function activityForTool(name, input = {}) {
   }
 }
 
-export function buildSystemPrompt({ settings, plan, sources, knowledgeHits, mode, permissions, today, projects = [] }) {
+export function buildSystemPrompt({ settings, plan, sources, knowledgeHits, mode, permissions, today, projects = [], capabilities = [] }) {
   const perms = Object.entries(SYSTEMS)
     .filter(([k]) => permissions.scope(k) !== "none")
     .map(([k, v]) => `${v.label}: ${permissions.scope(k)}`)
@@ -51,13 +52,26 @@ Non-negotiable rules:
 5. Student education records and personnel matters: if they appear, minimize, do not repeat identifiers, and note the FERPA or confidentiality concern. Placeholders like [REDACTED EMAIL] mean the privacy guard removed data; do not try to reconstruct it.
 6. ${webLine}
 
+Know your limits. This is what you can and cannot do right now:
+${capabilitySummary(capabilities)}
+When asked for something whose status is not "ready", do not attempt it or pretend. Answer with a limitation callout in this exact shape, then offer what you can do instead:
+:::limitation
+**<capability name>**
+- **Why I can't:** <reason>
+- **The missing piece:** <what is needed>
+- **With that piece, I could:** <what it unlocks>
+:::
+When a request shows that a new connector, skill or setup change would clearly help, add at most one :::suggestion callout with the same three parts plus what you noticed. Do not invent connectors that do not exist; say "a connector for X" when unsure one exists.
+
+Your answers may be read aloud. Put the bottom line in the first one or two sentences, in plain spoken English.
+
 Recommendations follow this frame: the decision; evidence available; assumptions; realistic alternatives; financial implications; staffing and capacity; fit with BMCC priorities and its rural service area; risks and opportunity cost; recommendation; what evidence would change it.
 
 Formatting: Markdown. Wrap structured items in callout blocks so the interface can label them:
 :::recommendation
 ...
 :::
-Other callout kinds: finding, discrepancy, opportunity, draft, question, risk. Use a discrepancy callout with Finding / Evidence / Confidence / Impact / Possible explanations / Recommendation / Next step. In email work, label each deadline "explicit" (date stated) or "inferred".
+Other callout kinds: finding, discrepancy, opportunity, draft, question, risk, limitation, suggestion. Use a discrepancy callout with Finding / Evidence / Confidence / Impact / Possible explanations / Recommendation / Next step. In email work, label each deadline "explicit" (date stated) or "inferred".
 
 Skill orchestration plan for this request (from Dr. Prevot's discovered Claude skills):
 ${planSummary(plan)}
@@ -120,6 +134,15 @@ export function buildTools(ctx) {
         }
         ctx.usedSkills?.add(skill.name);
         return out;
+      },
+    },
+    {
+      name: "check_capability",
+      description: "Check whether O.T.T.E.R. can do something right now (send email, read Outlook, calendar, listen, speak, computer volume, web research, Chrome forms, files, student records, sync). Returns status, why not, the missing piece, and what it would unlock.",
+      inputSchema: { type: "object", properties: { need: { type: "string" } }, required: ["need"] },
+      execute: async ({ need }) => {
+        const hits = matchCapabilities(String(need || ""), ctx.capabilities || []);
+        return hits.length ? hits : (ctx.capabilities || []).map(({ id, name, status }) => ({ id, name, status }));
       },
     },
     {
@@ -222,7 +245,7 @@ export async function runTurn({ transport, ctx, userText, history, onText = () =
   // Stored knowledge and project notes leave the device too, so they get the same redaction.
   const knowledgeHits = searchKnowledge(ctx.knowledge, userText, 5).map((k) => ({ ...k, text: redact(k.text) }));
   const projects = (ctx.projects || []).map((p) => ({ ...p, notes: redact(p.notes || "") }));
-  const system = buildSystemPrompt({ settings: ctx.settings, plan, sources: ctx.sources, knowledgeHits, mode: transport.kind, permissions: ctx.permissions, today: new Date().toISOString().slice(0, 10), projects });
+  const system = buildSystemPrompt({ settings: ctx.settings, plan, sources: ctx.sources, knowledgeHits, mode: transport.kind, permissions: ctx.permissions, today: new Date().toISOString().slice(0, 10), projects, capabilities: ctx.capabilities || [] });
   const tools = buildTools(ctx).map((t) => ({
     ...t,
     execute: async (input, toolCtx) => {
@@ -300,6 +323,7 @@ export const offlineTransport = { kind: "offline", service: null };
 export function offlineAnswer({ ctx, userText, plan }) {
   const parts = ["**No AI engine is connected**, so this answer comes from O.T.T.E.R.'s built-in analyzers only. Connect Claude in Settings > Engine for full answers."];
   if (plan.steps.length) parts.push("**Skill plan for this request**\n" + planSummary(plan));
+  for (const c of matchCapabilities(userText, ctx.capabilities || [])) parts.push(explain(c));
   const emails = ctx.rawSources.filter((s) => s.kind === "email");
   if (emails.length && /email|thread|deadline|action|commit|reply|inbox|summar/i.test(userText)) {
     for (const s of emails) {

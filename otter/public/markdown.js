@@ -9,6 +9,7 @@ export function esc(s) {
 const CALLOUT_LABELS = {
   finding: "Finding", recommendation: "Recommendation", discrepancy: "Discrepancy", opportunity: "Opportunity",
   draft: "Draft (not sent)", question: "Question for you", risk: "Risk", action: "Proposed action",
+  limitation: "What I can't do yet", suggestion: "Suggestion to grow O.T.T.E.R.",
 };
 
 function inline(s) {

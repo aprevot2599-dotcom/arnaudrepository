@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { scanSensitive } from "./core/privacy.js";
 import { discover, parseFrontmatter } from "./scripts/discover-skills.js";
+import { detectBackend, getVolume, setVolume, defaultRunner } from "./lib/sysvolume.js";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const MODEL = process.env.OTTER_MODEL || "claude-opus-5-5";
@@ -43,7 +44,7 @@ async function readJson(req, limit = 4 * 1024 * 1024) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
-export function createServer({ client = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN ? new Anthropic() : null, port = 4317, token = crypto.randomBytes(24).toString("hex") } = {}) {
+export function createServer({ client = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN ? new Anthropic() : null, port = 4317, token = crypto.randomBytes(24).toString("hex"), volumeBackend = detectBackend(), volumeRunner = defaultRunner } = {}) {
   let skills = null;
   const skillIndex = () => (skills ||= discover());
   const allowedOrigins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
@@ -65,7 +66,24 @@ export function createServer({ client = process.env.ANTHROPIC_API_KEY || process
             chromeBridge: false,
             chromeReason: "No supported interface exists for a local web app to drive the Claude in Chrome extension. Use paste or file upload, or hand off to Claude in Chrome.",
             skillsOnDisk: skillIndex().length,
+            systemVolume: { available: volumeBackend.available, platform: volumeBackend.platform, method: volumeBackend.method || "", reason: volumeBackend.reason || "", fix: volumeBackend.fix || "" },
           });
+
+        // Computer volume. The browser calls this only after you approve a proposal in the
+        // approval panel; the token and origin checks above keep other pages out.
+        if (url.pathname === "/api/system/volume") {
+          try {
+            if (req.method === "GET") return send(res, 200, { level: await getVolume(volumeBackend, volumeRunner) });
+            if (req.method === "POST") {
+              const { level } = await readJson(req, 1024);
+              const set = await setVolume(volumeBackend, level, volumeRunner);
+              console.log(`Computer volume set to ${set}% (approved in O.T.T.E.R.)`);
+              return send(res, 200, { level: set });
+            }
+          } catch (e) {
+            return send(res, e.status || 502, { error: e.status ? e.message : "The volume command failed on this computer: " + (e.stderr || e.message || "").toString().slice(0, 200), code: "volume_failed" });
+          }
+        }
 
         if (url.pathname === "/api/skills") return send(res, 200, { skills: skillIndex().map(({ path: p, ...s }) => s) });
 

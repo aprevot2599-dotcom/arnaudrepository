@@ -7,6 +7,10 @@ import { Store } from "./store.js";
 import { PermissionRegistry, ApprovalGate, AuditLog, SYSTEMS, ACTION_TYPES, describeProposalStatus, skillStatus, newId } from "../core/security.js";
 import { scanSensitive, redact, redactForLog, detectInjection } from "../core/privacy.js";
 import { runTurn, artifactTransport, serverTransport, offlineTransport } from "../core/agent.js";
+import { assessCapabilities, matchCapabilities, explain, STATUS_TEXT } from "../core/capabilities.js";
+import { recordTurn, recordExecution, recommend, dueRecommendation, markShown, recommendationMarkdown } from "../core/advisor.js";
+import { parseCommand } from "../core/voicecmd.js";
+import { Speaker, Listener, vendorOf } from "./voice.js";
 
 const $ = (id) => document.getElementById(id);
 const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
@@ -35,6 +39,22 @@ const executors = {
     store.save();
     return { ok: true, message: "Added to your task list." };
   },
+};
+let lastSystemVolume = null;
+executors.set_system_volume = async (run) => {
+  const level = parseInt((run.content.match(/(\d{1,3})%/) || [])[1], 10);
+  if (!engine.token) return { ok: false, message: "Not run: computer volume can only be changed through the local server on your computer." };
+  const r = await fetch("/api/system/volume", { method: "POST", headers: { "content-type": "application/json", "x-otter-token": engine.token }, body: JSON.stringify({ level }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, message: j.error || "The volume change failed." };
+  lastSystemVolume = j.level;
+  renderVoicePop();
+  // A later volume change makes the launch prompt moot; cancelling it can never cause an action.
+  setTimeout(() => {
+    for (const q of gate.list()) if (q.type === "set_system_volume" && q.origin === "launch" && q.status === "pending") gate.reject(q.id, { reason: "superseded by a later volume change" });
+    launchChecks({ volume: false });
+  }, 0);
+  return { ok: true, message: `Computer volume set to ${j.level}%.` };
 };
 const gate = new ApprovalGate({ permissions, audit, executors, proposals: D.proposals });
 gate.listeners.add(() => { D.proposals = gate.list(); store.save(); renderCounts(); renderDashboard(); refreshProposalCards(); if (currentView === "tasks") renderTasks(); });
@@ -410,6 +430,9 @@ function autosize() {
 async function send(text) {
   text = text.trim();
   if (!text || busy) return;
+  speaker.stop();
+  const cmd = parseCommand(text);
+  if (cmd) { $("input").value = ""; autosize(); return handleCommand(cmd, text); }
   if (engine.kind !== "offline" && !serviceApproved()) { askServiceApproval(() => send(text)); return; }
   ensureSaved();
   if (!current.messages.length) current.title = autoTitle(text);
@@ -440,6 +463,7 @@ async function send(text) {
   const ctx = {
     gate, permissions, registry, settings: D.settings, knowledge: D.knowledge, projects: D.projects,
     rawSources: current.sourceIds.map((id) => D.sources[id]).filter(Boolean),
+    capabilities: assessCapabilities(capEnv()),
     usedSkills,
     addFinding: (f) => {
       const saved = { ...f, id: newId("f"), createdAt: Date.now(), conversationId: current.id, evidence: f.evidence.map((e) => ({ ...e, sourceTitle: e.sourceId ? D.sources[e.sourceId]?.title || e.sourceId : e.title })) };
@@ -457,7 +481,7 @@ async function send(text) {
       return r.ok ? (await r.json()).instructions : null;
     } : null,
   };
-  const history = current.messages.slice(0, -1).filter((m) => m.content && (m.role === "user" || m.role === "assistant")).slice(-16).map((m) => ({ role: m.role, content: m.content }));
+  const history = current.messages.slice(0, -1).filter((m) => m.content && !m.local && (m.role === "user" || m.role === "assistant")).slice(-16).map((m) => ({ role: m.role, content: m.content }));
   const bubble = live.querySelector(".bubble");
   let final = "done";
   try {
@@ -496,6 +520,17 @@ async function send(text) {
   scroll();
   setActivity(final);
   renderDashboard();
+  recordTurn(D.usage, {
+    plan: reply.plan,
+    proposals: reply.proposalIds.map((id) => gate.get(id)).filter(Boolean),
+    sourceKinds: ctx.rawSources.map((s) => s.kind),
+    capabilityIds: matchCapabilities(text, ctx.capabilities).map((c) => c.id),
+    noSkillTopic: reply.plan && !reply.plan.steps.length ? reply.plan.intents[0] || null : null,
+  });
+  store.save();
+  const spoken = reply.content || reply.notice?.text || "";
+  if (D.settings.voiceOn && spoken) speaker.speak(spoken); else afterSpeaking();
+  maybeSuggest();
 }
 
 function askServiceApproval(then) {
@@ -543,6 +578,7 @@ function openApproval(id) {
       try {
         gate.approve(p.id, { confirmDigest: shownDigest });
         const done = await gate.execute(p.id);
+        recordExecution(D.usage, done);
         close();
         openApproval(p.id);
         if (done.status === "executed") { setActivity("done"); toast("That one's wrapped up. The paperwork survived."); }
@@ -593,7 +629,8 @@ function showView(v) {
   if (v === "tasks") renderTasks();
   if (v === "research") renderResearch();
   if (v === "settings") renderSettings();
-  if (v !== "chat") $("convTitle").textContent = { skills: "Skill Registry", projects: "Projects", tasks: "Tasks and approvals", research: "Research", settings: "Settings" }[v];
+  if (v === "abilities") renderAbilities();
+  if (v !== "chat") $("convTitle").textContent = { skills: "Skill Registry", projects: "Projects", tasks: "Tasks and approvals", research: "Research", settings: "Settings", abilities: "Abilities and growth" }[v];
   else if (current) $("convTitle").textContent = current.title;
   closeSideOnNarrow();
 }
@@ -725,6 +762,19 @@ function renderSettings() {
         <div id="ferpaFields" ${S.ferpaAttested ? "" : "hidden"} class="grid-2" style="gap:8px"><label class="field"><span>Lawful basis (FERPA exception)</span><input id="ferpaBasis" type="text" value="${esc(S.ferpaBasis)}" placeholder="e.g. school official, legitimate educational interest"></label><label class="field"><span>Approved by (BMCC office or person)</span><input id="ferpaApprover" type="text" value="${esc(S.ferpaApprover)}"></label></div>
         <p class="hint" style="margin:0">O.T.T.E.R. is not certified FERPA-compliant. Turning this on records your attestation; it does not establish compliance. Leave it off unless BMCC has approved this use in writing.</p></div>
     </div>
+    <div class="card"><h3>Voice and conversation</h3>
+      <div class="grid-2" style="gap:10px">
+        <label class="switch"><input id="sVoiceOn" type="checkbox" ${S.voiceOn ? "checked" : ""}><span>Speak answers</span></label>
+        <label class="field"><span>Speaking volume <b class="mono" id="sVolVal">${Math.round(S.voiceVolume * 100)}%</b></span><input id="sVol" type="range" min="0" max="100" step="5" value="${Math.round(S.voiceVolume * 100)}"></label>
+        <label class="field"><span>Voice</span><select id="sVoice"></select></label>
+        <label class="field"><span>How much to read aloud</span><select id="sSpeakMode"><option value="summary">Bottom line and first points</option><option value="full">Everything</option></select></label>
+        <label class="field"><span>Speed</span><select id="sRate">${[[0.9, "Slower"], [1, "Normal"], [1.1, "Faster"]].map(([v, l]) => `<option value="${v}" ${+S.voiceRate === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        <label class="switch"><input id="sCloud" type="checkbox" ${permissions.check("cloud_voice", "read") ? "checked" : ""}><span>Allow online voices (most natural; spoken text goes to Microsoft or Google)</span></label>
+        <label class="switch"><input id="sConv" type="checkbox" ${S.conversationMode ? "checked" : ""}><span>Conversation mode: listen after speaking</span></label>
+        <label class="switch"><input id="sListen" type="checkbox" ${permissions.check("browser_speech", "read") ? "checked" : ""}><span>Allow listening (audio may go to ${esc(recognitionVendor())} for transcription)</span></label>
+        <label class="switch"><input id="sSysVol" type="checkbox" ${permissions.check("system_volume", "write") ? "checked" : ""}><span>Allow changing this computer's volume (each change approved)</span></label>
+        <label class="field"><span>Computer volume at launch</span><select id="sLaunch"><option value="off" ${!S.systemVolumeAtLaunch ? "selected" : ""}>Don't ask</option>${[10, 20, 30, 40, 50].map((v) => `<option value="${v}" ${S.systemVolumeAtLaunch && +S.launchVolume === v ? "selected" : ""}>Ask to set ${v}%</option>`).join("")}</select></label>
+      </div></div>
     <div class="card"><h3>Permissions</h3><p class="hint" style="margin:0">Each system is separate: Outlook access says nothing about SharePoint or Banner, and read never implies write. A signed-in browser does not count. Protected systems need a stated purpose. Note that no integration for these systems exists yet, so a grant today only lets plans and approvals reference them.</p><div id="permList"></div></div>
     <div class="grid-2">
       <div class="card"><h3>Personal</h3>
@@ -751,7 +801,7 @@ function renderSettings() {
   $$("#ferpaBasis").onchange = ferpaSave; $$("#ferpaApprover").onchange = ferpaSave;
   const pl = $$("#permList");
   for (const [key, sys] of Object.entries(SYSTEMS)) {
-    if (["anthropic_api", "claude_ai", "local_knowledge"].includes(key)) continue;
+    if (["anthropic_api", "claude_ai", "local_knowledge", "cloud_voice", "browser_speech", "system_volume"].includes(key)) continue;
     const g = permissions.grants[key];
     const row = h(`<div class="perm-row"><div><b>${esc(sys.label)}</b> ${sys.protected ? '<span class="lock">protected</span>' : ""}${g.purpose ? `<div class="hint">Purpose: ${esc(g.purpose)}</div>` : ""}</div><select aria-label="Access for ${esc(sys.label)}"><option value="none">No access</option><option value="read">Read</option><option value="write">Read and write</option></select><input class="purpose inline-input" type="text" placeholder="Purpose and scope (required to grant)" hidden></div>`);
     const sel = row.querySelector("select"), pur = row.querySelector(".purpose");
@@ -766,6 +816,21 @@ function renderSettings() {
     };
     pl.append(row);
   }
+  const vs = $$("#sVoice");
+  const choice = speaker.supported ? speaker.choice() : { candidates: [] };
+  vs.innerHTML = `<option value="">Best available${choice.voice ? ` (${esc(choice.voice.name)})` : ""}</option>` + choice.candidates.map((v) => `<option value="${esc(v.name)}" ${S.voiceName === v.name ? "selected" : ""}>${esc(v.name)}${v.localService ? "" : " (online)"}</option>`).join("");
+  vs.onchange = () => { S.voiceName = vs.value; store.save(); speaker.speak("This is the voice you picked.", { mode: "full" }); };
+  $$("#sSpeakMode").value = S.speakMode;
+  $$("#sSpeakMode").onchange = (e) => { S.speakMode = e.target.value; store.save(); };
+  $$("#sRate").onchange = (e) => { S.voiceRate = +e.target.value; store.save(); };
+  $$("#sVoiceOn").onchange = (e) => { S.voiceOn = e.target.checked; store.save(); renderVoicePop(); };
+  $$("#sVol").oninput = (e) => { S.voiceVolume = +e.target.value / 100; $$("#sVolVal").textContent = e.target.value + "%"; store.save(); renderVoicePop(); };
+  const permToggle = (sel, sys, scope, purpose) => ($$(sel).onchange = (e) => { e.target.checked ? permissions.grant(sys, scope, { purpose }) : permissions.revoke(sys); savePerms(); renderSettings(); renderVoicePop(); });
+  permToggle("#sCloud", "cloud_voice", "read", "Natural voice, enabled in Settings");
+  permToggle("#sListen", "browser_speech", "read", "Conversation mode, enabled in Settings");
+  permToggle("#sSysVol", "system_volume", "write", "Volume changes, each approved");
+  $$("#sConv").onchange = (e) => { S.conversationMode = e.target.checked; if (!e.target.checked) stopConversation(); store.save(); };
+  $$("#sLaunch").onchange = (e) => { S.systemVolumeAtLaunch = e.target.value !== "off"; if (S.systemVolumeAtLaunch) S.launchVolume = +e.target.value; store.save(); };
   $$("#myNames").onchange = (e) => { S.myNames = e.target.value.split(",").map((x) => x.trim()).filter(Boolean); store.save(); };
   $$("#briefing").onchange = (e) => { S.briefingFormat = e.target.value; store.save(); };
   $$("#themeSel").value = S.theme;
@@ -788,21 +853,9 @@ function renderSettings() {
 }
 
 function capabilityReport() {
-  const rows = [
-    ["Chat with Claude", engine.kind === "offline" ? "unavailable" : serviceApproved() ? "working" : "needs approval", engine.detail],
-    ["Web research with citations", engine.kind === "server" ? (permissions.check("web_research", "read") ? "working" : "needs permission") : "unavailable", engine.kind === "server" ? "Claude API web search tool." : "Needs the local server with an API key."],
-    ["Email analysis (paste or upload)", "working", "Deterministic parser always available; Claude adds summaries and drafts."],
-    ["Outlook direct access", "unavailable", "BMCC blocks the Microsoft 365 connector and no browser bridge exists for this app."],
-    ["Claude in Chrome bridge", "unavailable", "No supported interface for a web app to drive the extension; Chrome skills get approved hand-off briefs."],
-    ["Discrepancy detection", "working", "Built-in figure and totals checks plus Claude analysis with verified quotes."],
-    ["Skill registry and orchestration", registry.length ? "working" : "unavailable", `${registry.length} skills discovered; in-app skills inform answers, others are handed off or blocked.`],
-    ["Running skill scripts (docx, xlsx, forms)", "unavailable", "Scripts run inside Claude Code, Cowork or Claude in Chrome, not in this app."],
-    ["Approval gate and audit log", "working", "Enforced in code; 16 automated fail-safe tests."],
-    ["Sending, posting, submitting", "unavailable", "No external integration is authorized; approved items are handed to you to send."],
-    ["Persistent history and knowledge", store.available ? "working" : "unavailable", store.available ? "Browser storage on this device only." : "This browser blocked local storage."],
-  ];
-  const cls = { working: "st-available", "needs approval": "st-unavailable", "needs permission": "st-unavailable", unavailable: "st-restricted" };
-  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Capability</th><th>Status</th><th>Detail</th></tr></thead><tbody>${rows.map(([a, b, c]) => `<tr><td>${esc(a)}</td><td><span class="st ${cls[b]}">${esc(b)}</span></td><td>${esc(c)}</td></tr>`).join("")}</tbody></table></div>`;
+  const cls = { ready: "st-available", partial: "st-unavailable", needs_you: "st-unavailable", missing: "st-restricted", blocked: "st-restricted" };
+  const caps = assessCapabilities(capEnv());
+  return `<div class="table-wrap"><table class="data-table caps-table"><thead><tr><th>Capability</th><th>Status</th><th>Why I can't</th><th>The missing piece</th><th>With that piece, I could</th></tr></thead><tbody>${caps.map((c) => `<tr><td><b>${esc(c.name)}</b>${c.can ? `<div class="hint">${esc(c.can)}</div>` : ""}</td><td><span class="st ${cls[c.status]}">${esc(STATUS_TEXT[c.status])}</span></td><td>${esc(c.why || "")}</td><td>${esc(c.missing || "")}</td><td>${esc(c.unlocks || "")}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 // ---------- dashboard ----------
@@ -842,6 +895,7 @@ function renderDashboard() {
     sec("Email intelligence", emailF.length, emailF.slice(0, 8).map(findingNode), "No findings from authorized email yet. Add a thread with + Add source."),
     sec("Research", research.length, research.slice(0, 6).map(findingNode), "No source-backed research findings yet.", false),
     sec("Projects", D.projects.length, D.projects.map((p) => h(`<div class="ditem"><div class="row"><b>${esc(p.name)}</b><span class="tag">${esc(p.status)}</span><span class="tag">${esc(p.priority)}</span></div>${p.notes ? `<span class="hint">${esc(p.notes.slice(0, 140))}</span>` : ""}</div>`)), "No projects entered.", false),
+    sec("Grow O.T.T.E.R.", recommend(D.usage, advisorEnv()).length, recommend(D.usage, advisorEnv()).slice(0, 3).map((r) => { const n = h(`<div class="ditem"><b>${esc(r.title)}</b><span class="hint">${esc(r.evidence)}</span><button type="button" class="link-btn" style="justify-self:start">Details</button></div>`); n.querySelector("button").onclick = () => showView("abilities"); return n; }), "No suggestions yet. They come from where I get stuck.", false),
     sec("Skill status", null, [meter], "", false),
     sec("Security", null, security, "", false),
   );
@@ -856,19 +910,33 @@ function renderCounts() {
 }
 
 // ---------- onboarding ----------
-function runOnboarding() {
+function runOnboarding({ only = null, onDone = null } = {}) {
   const S = D.settings;
   const svc = service();
+  const voiceStep = () => {
+    const c = speaker.supported ? speaker.choice() : {};
+    const listenCap = capability("listen");
+    const volCap = capability("system_volume");
+    const canAskListen = !!engine.token && listener.supported;
+    return `<h2 id="modalTitle">Voice and conversation</h2>
+      <p>I speak with the most natural male voice this browser offers, at <b>20%</b> speaking volume. Say or type "louder", "quieter" or "volume to 40%" any time.</p>
+      <label class="switch"><input id="obV1" type="checkbox" ${S.voiceOn ? "checked" : ""}><span>Speak my answers${c.voice ? ` (voice: ${esc(c.voice.name)})` : ""}</span></label>
+      ${c.bestCloud ? `<label class="switch"><input id="obV2" type="checkbox" ${permissions.check("cloud_voice", "read") || !S.voiceOnboarded ? "checked" : ""}><span>Use the most natural online voice, "${esc(c.bestCloud.name)}". The text I speak is sent to ${esc(vendorOf(c.bestCloud))} to be voiced.</span></label>` : ""}
+      ${canAskListen ? `<label class="switch"><input id="obV3" type="checkbox" ${S.conversationMode && (permissions.check("browser_speech", "read") || !S.voiceOnboarded) ? "checked" : ""}><span>Conversation mode: listen after I speak. ${listener.onDevice ? "This browser can transcribe on this device." : `Your audio goes to ${esc(recognitionVendor())} to be transcribed.`}</span></label>` : `<p class="hint"><b>Listening:</b> ${esc(listenCap.why)} ${esc(listenCap.missing)}</p>`}
+      ${engine.token && engine.cap?.systemVolume?.available ? `<label class="switch"><input id="obV4" type="checkbox" ${permissions.check("system_volume", "write") || !S.voiceOnboarded ? "checked" : ""}><span>Let O.T.T.E.R. change this computer's volume, starting at ${S.launchVolume}% when it opens. Every change still asks for your approval.</span></label>` : `<p class="hint"><b>Computer volume:</b> ${esc(volCap.why)} ${esc(volCap.missing)}</p>`}`;
+  };
   const steps = [
     () => `<h2 id="modalTitle">Welcome. A few questions to set safe boundaries.</h2><p>O.T.T.E.R. found <b>${registry.length}</b> Claude skills on disk (${registry.filter((s) => s.bmcc).length} BMCC-specific) and is connected to: <b>${esc(engine.label)}</b>.</p><p class="hint">${esc(engine.detail)}</p>${svc ? `<label class="switch"><input id="ob1" type="checkbox" ${serviceApproved() ? "checked" : ""}><span>BMCC permits sending non-protected work content to ${esc(SYSTEMS[svc].label)}.</span></label>` : "<p>No Claude connection yet, so only the built-in analyzers run. You can still set everything up.</p>"}`,
+    voiceStep,
     () => `<h2 id="modalTitle">Email and Chrome</h2><p>BMCC blocks Claude's Microsoft 365 connector, and there is no supported way for this app to drive the Claude in Chrome extension. So O.T.T.E.R. never touches Outlook. You add threads yourself with <b>+ Add source</b> (paste, or upload a saved .eml or .txt).</p><label class="field"><span>Names and addresses that mean "you" in a thread (for tracking your commitments)</span><input id="ob2" type="text" value="${esc(S.myNames.join(", "))}"></label>${engine.kind === "server" ? `<label class="switch"><input id="obWeb" type="checkbox" ${permissions.check("web_research", "read") ? "checked" : ""}><span>Allow public web research (government, institutional and research sources, with citations).</span></label>` : ""}`,
     () => `<h2 id="modalTitle">Priority projects</h2><label class="field"><span>One per line. Mark high priority with an asterisk, e.g. *Boardman CDL cohort</span><textarea id="ob3" rows="5" placeholder="*I2PA pre-apprenticeship grant&#10;Fall workshop lineup&#10;Union County COD renewal"></textarea></label><p class="hint">Skip if you prefer to add them later under Projects.</p>`,
     () => `<h2 id="modalTitle">Briefing format</h2>${["Bottom line first, then reasoning, then a short action list.", "Tight bullet briefing: decision, numbers, risks, next steps.", "Short narrative memo a board member could read."].map((f, i) => `<label class="switch"><input type="radio" name="ob4" value="${esc(f)}" ${S.briefingFormat === f || (!i && !S.briefingFormat) ? "checked" : ""}><span>${esc(f)}</span></label>`).join("")}`,
     () => `<h2 id="modalTitle">Storage and privacy</h2><p>This version runs locally: history, sources and knowledge stay in this browser on this device. Nothing goes to an outside database. Messages go to Claude only after the privacy guard checks them.</p><label class="field"><span>Delete unpinned conversations after</span><select id="ob5">${[[30, "30 days"], [90, "90 days"], [180, "180 days"], [365, "1 year"], [0, "Never"]].map(([v, l]) => `<option value="${v}" ${+S.retentionDays === v ? "selected" : ""}>${l}</option>`).join("")}</select></label><p class="hint">Student education-record processing (FERPA) is off. Turn it on only with written BMCC approval, in Settings > Privacy.</p>`,
   ];
+  if (only === "voice") steps.splice(0, steps.length, voiceStep);
   let i = 0;
   const n = h(`<div><div class="step-dots" aria-hidden="true">${steps.map(() => "<i></i>").join("")}</div><div id="obBody"></div><div class="actions"><button type="button" class="btn" id="obSkip">Skip setup</button><button type="button" class="btn" id="obBack">Back</button><button type="button" class="btn btn-primary" id="obNext" data-autofocus>Next</button></div></div>`);
-  const close = openModal(n, { onClose: () => { S.onboarded = true; store.save(); } });
+  const close = openModal(n, { onClose: () => { S.onboarded = true; S.voiceOnboarded = true; store.save(); renderVoicePop(); onDone?.(); } });
   const collect = () => {
     const q = (s) => n.querySelector(s);
     if (q("#ob1")) q("#ob1").checked ? approveService() : svc && serviceApproved() && revokeService(svc);
@@ -879,6 +947,11 @@ function runOnboarding() {
       q("#ob3").value = "";
     }
     const r = n.querySelector('input[name="ob4"]:checked'); if (r) S.briefingFormat = r.value;
+    if (q("#obV1")) { S.voiceOn = q("#obV1").checked; S.voiceOnboarded = true; }
+    if (q("#obV2")) { q("#obV2").checked ? permissions.grant("cloud_voice", "read", { purpose: "Natural male voice, approved in setup" }) : permissions.revoke("cloud_voice"); }
+    if (q("#obV3")) { S.conversationMode = q("#obV3").checked; q("#obV3").checked ? permissions.grant("browser_speech", "read", { purpose: "Conversation mode, approved in setup" }) : permissions.revoke("browser_speech"); }
+    if (q("#obV4")) { S.systemVolumeAtLaunch = q("#obV4").checked; q("#obV4").checked ? permissions.grant("system_volume", "write", { purpose: "Volume changes, each approved" }) : permissions.revoke("system_volume"); }
+    savePerms();
     if (q("#ob5")) { S.retentionDays = +q("#ob5").value; }
     store.save();
   };
@@ -892,6 +965,228 @@ function runOnboarding() {
   n.querySelector("#obBack").onclick = () => { collect(); i = Math.max(0, i - 1); show(); };
   n.querySelector("#obSkip").onclick = close;
   show();
+}
+
+// ---------- voice, conversation and computer volume ----------
+let preSpeakState = "idle";
+let conversationLive = false; // set by a click; browsers require one before listening
+const speaker = new Speaker({
+  getSettings: () => ({ ...D.settings, allowCloudVoices: permissions.check("cloud_voice", "read") }),
+  onStart: () => { if (otter.state !== "speaking") preSpeakState = otter.state; setActivity("speaking"); },
+  onEnd: (interrupted) => { setActivity(["speaking", "thinking"].includes(preSpeakState) ? "idle" : preSpeakState); if (!interrupted) afterSpeaking(); },
+});
+const listener = new Listener({
+  onInterim: (t) => { $("input").value = t; autosize(); },
+  onState: (on) => { $("micBtn").setAttribute("aria-pressed", String(on)); $("micBtn").classList.toggle("on", on); if (on) setActivity("listening"); else if (otter.state === "listening") setActivity("idle"); },
+  onFinal: (t) => { $("input").value = ""; autosize(); send(t); },
+  onError: (code) => {
+    if (code === "silence") { if (conversationLive) setTimeout(() => conversationLive && !busy && !speaker.speaking && listener.start(), 300); return; }
+    conversationLive = false;
+    if (code === "idle") banner("I paused listening after a long silence. Click the microphone to talk again.");
+    else if (code === "not-allowed" || code === "service-not-allowed") banner("The browser blocked the microphone. Allow it in the address bar's site settings, then click the microphone.");
+    else if (code === "network") banner("Listening needs the browser's online speech service, and it couldn't be reached.");
+    else toast("Listening stopped (" + code + ").");
+  },
+});
+
+function recognitionVendor() {
+  const ua = navigator.userAgent;
+  if (/Edg\//.test(ua)) return "Microsoft";
+  if (/Chrome\//.test(ua)) return "Google";
+  if (/Safari\//.test(ua)) return "Apple";
+  return "the browser maker";
+}
+function voiceEnv() {
+  const c = speaker.supported ? speaker.choice() : {};
+  return {
+    synthesis: speaker.supported, maleVoice: c.voice?.name || null, maleVoiceLocal: !!c.local, maleVoiceNatural: !!c.natural,
+    cloudMaleVoice: c.bestCloud?.name || null, cloudVendor: c.bestCloud ? vendorOf(c.bestCloud) : "", cloudVoicesAllowed: permissions.check("cloud_voice", "read"),
+    recognition: listener.supported, recognitionAllowed: permissions.check("browser_speech", "read"), onDevice: listener.onDevice,
+  };
+}
+function capEnv() {
+  return {
+    engineKind: engine.kind, serverRunning: !!engine.token, serviceApproved: serviceApproved(), webResearch: permissions.check("web_research", "read"),
+    speech: voiceEnv(), systemVolume: engine.cap?.systemVolume || {}, systemVolumePermitted: permissions.check("system_volume", "write"), ferpaAttested: D.settings.ferpaAttested,
+  };
+}
+const capability = (id) => assessCapabilities(capEnv()).find((c) => c.id === id);
+function advisorEnv() {
+  return { engineKind: engine.kind, webResearch: permissions.check("web_research", "read"), voice: { ...voiceEnv(), premiumWanted: (D.usage.capabilityAsks.speak || 0) >= 2 }, skillCount: registry.length, knowledgeCount: D.knowledge.length, connectorsOnAccount: [] };
+}
+
+function canListen() { return listener.supported && !!engine.token && permissions.check("browser_speech", "read"); }
+function afterSpeaking() { if (conversationLive && canListen() && !busy && !listener.active) listener.start(); }
+function startConversation() {
+  const cap = capability("listen");
+  if (cap.status !== "ready") { showLocalReply(explain(cap)); return; }
+  conversationLive = true;
+  hideBanner();
+  speaker.stop();
+  listener.start();
+}
+function stopConversation() { conversationLive = false; listener.stop(); }
+
+function banner(text, buttons = []) {
+  const b = $("convBanner");
+  b.replaceChildren(h(`<span class="cb-text">${esc(text)}</span>`));
+  for (const { label, fn, primary } of buttons) { const x = h(`<button type="button" class="btn ${primary ? "btn-primary" : ""}">${esc(label)}</button>`); x.onclick = fn; b.append(x); }
+  const close = h(`<button type="button" class="icon-btn" aria-label="Dismiss">&times;</button>`);
+  close.onclick = hideBanner;
+  b.append(close);
+  b.hidden = false;
+}
+function hideBanner() { $("convBanner").hidden = true; }
+
+// Messages O.T.T.E.R. answers itself, without Claude (commands, limits, suggestions).
+function addLocalMessages(userText, replyMd, { speak = true, proposalIds = [] } = {}) {
+  ensureSaved();
+  if (userText) {
+    if (!current.messages.length) { current.title = autoTitle(userText); $("convTitle").textContent = current.title; $("messages").replaceChildren(); }
+    const um = { id: newId("m"), role: "user", content: userText, ts: Date.now(), local: true };
+    current.messages.push(um);
+    $("messages").append(messageNode(um));
+  } else if (!current.messages.length) $("messages").replaceChildren();
+  const am = { id: newId("m"), role: "assistant", content: replyMd, ts: Date.now(), local: true, proposalIds };
+  current.messages.push(am);
+  current.updatedAt = Date.now();
+  $("messages").append(messageNode(am));
+  $("messages").scrollTop = $("messages").scrollHeight;
+  store.save();
+  renderHistory();
+  if (speak && D.settings.voiceOn) speaker.speak(replyMd); else afterSpeaking();
+}
+const showLocalReply = (md, opts) => addLocalMessages(null, md, opts);
+
+async function readSystemVolume() {
+  if (!engine.token) return null;
+  try { const r = await fetch("/api/system/volume", { headers: { "x-otter-token": engine.token } }); if (!r.ok) return null; lastSystemVolume = (await r.json()).level; return lastSystemVolume; } catch { return null; }
+}
+async function proposeVolume(level, origin, why) {
+  const p = await gate.propose({ type: "set_system_volume", target: "This computer (default audio output)", content: `Set this computer's volume to ${level}%`, consequences: `Changes the volume for every app on this computer. ${why}`, origin });
+  p.conversationId = current?.id;
+  return p;
+}
+async function systemVolumeRequest(text, level) {
+  const cap = capability("system_volume");
+  if (cap.status !== "ready") return addLocalMessages(text, explain(cap));
+  level = Math.max(0, Math.min(100, Math.round(level)));
+  const p = await proposeVolume(level, "user_request", "You asked for this.");
+  addLocalMessages(text, `Queued: set this computer's volume to ${level}%. Approve it on screen. I don't take approvals for system changes by voice, because a misheard word shouldn't change your computer.`, { proposalIds: [p.id] });
+  openApproval(p.id);
+}
+
+async function handleCommand(cmd, text) {
+  const S = D.settings;
+  const pct = () => Math.round(S.voiceVolume * 100);
+  let reply = "";
+  let speak = true;
+  if (cmd.kind === "volume_set" && cmd.target === "system") return systemVolumeRequest(text, cmd.level);
+  if (cmd.kind === "volume_step" && cmd.target === "system") {
+    const cap = capability("system_volume");
+    if (cap.status !== "ready") return addLocalMessages(text, explain(cap));
+    const cur = await readSystemVolume();
+    if (cur == null || Number.isNaN(cur)) return addLocalMessages(text, "I couldn't read the computer's current volume, so I can't raise or lower it by a step. Say a number instead, for example \"set computer volume to 40%\".");
+    return systemVolumeRequest(text, cur + cmd.step);
+  }
+  switch (cmd.kind) {
+    case "volume_set": S.voiceVolume = cmd.level / 100; S.voiceOn = cmd.level > 0; reply = `Speaking volume is now ${cmd.level}%.`; break;
+    case "volume_step": S.voiceVolume = Math.max(0, Math.min(1, Math.round((S.voiceVolume + cmd.step / 100) * 20) / 20)); S.voiceOn = S.voiceVolume > 0; reply = `Speaking volume is now ${pct()}%.${S.voiceVolume >= 1 ? " That's my maximum; for more, raise the computer's volume." : ""}`; break;
+    case "mute": S.voiceOn = false; speaker.stop(); reply = "Muted. Say or type \"unmute\" to hear me again."; speak = false; break;
+    case "unmute": S.voiceOn = true; if (!S.voiceVolume) S.voiceVolume = 0.2; reply = `I'm back, at ${pct()}% speaking volume.`; break;
+    case "listen_off": stopConversation(); reply = "Stopped listening. Click the microphone when you want to talk."; break;
+    case "listen_on": { const cap = capability("listen"); if (cap.status !== "ready") { reply = explain(cap); break; } S.conversationMode = true; addLocalMessages(text, "Listening.", { speak: false }); store.save(); renderVoicePop(); return startConversation(); }
+    case "volume_query": {
+      const sys = capability("system_volume").status === "ready" ? await readSystemVolume() : null;
+      reply = `Speaking volume is ${pct()}%.${sys != null ? ` The computer is at ${sys}%.` : ""}`;
+      break;
+    }
+  }
+  audit.record("voice.command", { kind: cmd.kind });
+  store.save();
+  renderVoicePop();
+  addLocalMessages(text, reply, { speak });
+}
+
+function renderVoicePop() {
+  const S = D.settings;
+  $("vpOn").checked = S.voiceOn;
+  $("vpVol").value = Math.round(S.voiceVolume * 100);
+  $("vpVolVal").textContent = Math.round(S.voiceVolume * 100) + "%";
+  const c = speaker.supported ? speaker.choice() : null;
+  $("vpVoice").textContent = !speaker.supported ? "This browser cannot speak." : c?.voice ? `Voice: ${c.voice.name}${c.local ? "" : " (online)"}` : "No male voice available here. See Abilities.";
+  $("vpConv").checked = S.conversationMode;
+  const sys = $("vpSys");
+  const cap = capability("system_volume");
+  if (cap.status === "ready") {
+    sys.innerHTML = `<div><b>Computer volume</b> <span class="mono">${lastSystemVolume ?? "?"}%</span></div><div class="toolbar"><button type="button" class="btn" data-d="-10">&minus;10</button><button type="button" class="btn" data-d="10">+10</button><button type="button" class="btn" data-set="${S.launchVolume}">Set to ${S.launchVolume}%</button></div><div class="hint">Each change asks for your approval.</div>`;
+    sys.querySelectorAll("[data-d]").forEach((b) => (b.onclick = async () => { const cur = (await readSystemVolume()) ?? lastSystemVolume; if (cur == null) return toast("Couldn't read the current volume."); systemVolumeRequest(`Computer volume ${+b.dataset.d > 0 ? "up" : "down"} 10`, cur + +b.dataset.d); $("voicePop").hidden = true; }));
+    sys.querySelector("[data-set]").onclick = () => { systemVolumeRequest(`Set computer volume to ${S.launchVolume}%`, S.launchVolume); $("voicePop").hidden = true; };
+  } else {
+    sys.innerHTML = `<div><b>Computer volume</b>: ${esc(STATUS_TEXT[cap.status].toLowerCase())}</div><div class="hint">${esc(cap.why)}</div>`;
+  }
+  $("voiceWaves").style.opacity = S.voiceOn ? 1 : 0.15;
+}
+
+async function launchChecks({ volume = true } = {}) {
+  const items = [];
+  const btns = [];
+  if (D.settings.conversationMode) {
+    const cap = capability("listen");
+    if (cap.status === "ready") { items.push("Conversation mode is on. Browsers need one click before I can listen."); btns.push({ label: "Start talking", fn: startConversation, primary: true }); }
+    else if (D.settings.voiceOn) { items.push("I'll answer out loud, but I can't hear you in this version."); btns.push({ label: "Why?", fn: () => { hideBanner(); showLocalReply(explain(cap), { speak: false }); } }); }
+  }
+  if (volume && D.settings.systemVolumeAtLaunch && capability("system_volume").status === "ready") {
+    const lvl = D.settings.launchVolume;
+    const existing = gate.list().find((p) => p.type === "set_system_volume" && p.status === "pending" && p.origin === "launch");
+    const p = existing || (await proposeVolume(lvl, "launch", "You asked O.T.T.E.R. to start at this level; it asks each launch because one approval never covers future changes."));
+    readSystemVolume().then(renderVoicePop);
+    items.push(`Set the computer to ${lvl}% volume?`);
+    btns.push({ label: `Review ${lvl}%`, fn: () => openApproval(p.id) });
+  }
+  if (items.length) banner(items.join(" "), btns); else hideBanner();
+}
+
+function maybeSuggest() {
+  const recs = recommend(D.usage, advisorEnv());
+  renderGrowCount(recs);
+  const due = dueRecommendation(D.usage, recs);
+  if (!due) return;
+  markShown(D.usage, due);
+  store.save();
+  showLocalReply(recommendationMarkdown(due), { speak: false });
+}
+function renderGrowCount(recs = recommend(D.usage, advisorEnv())) {
+  const g = $("growCount");
+  g.hidden = !recs.length;
+  g.textContent = recs.length;
+}
+
+function renderAbilities() {
+  const el = $("view-abilities");
+  const recs = recommend(D.usage, advisorEnv());
+  renderGrowCount(recs);
+  const page = h(`<div class="page">
+    <div><h2>Abilities and growth</h2><p class="lead">What I can do right now, what I can't and why, and the piece that would unlock it. This updates as you add permissions, connectors or the local server. Recommendations come from counts of what you ask for and where I get stuck, kept on this device. I never read past conversations to make them.</p></div>
+    <div class="card"><div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="flex:1;margin:0">Grow O.T.T.E.R.</h3>${engine.kind !== "offline" ? '<button type="button" class="btn" id="askIdeas">Ask Claude for more ideas</button>' : ""}</div><div id="recList" class="findings-list"></div></div>
+    <div class="card"><h3>What I can and can't do</h3>${capabilityReport()}</div>
+  </div>`);
+  const list = page.querySelector("#recList");
+  for (const r of recs) {
+    const n = h(`<div class="ditem"><div class="row"><b>${esc(r.title)}</b><span class="tag">${esc(r.kind)}</span><span class="conf conf-${r.priority === "high" ? "high" : r.priority === "medium" ? "medium" : "low"}">${esc(r.priority)}</span></div><span><b>What I noticed:</b> ${esc(r.evidence)}</span><span><b>Why it matters:</b> ${esc(r.why)}</span><span><b>The missing piece:</b> ${esc(r.missing)}</span><span><b>With that piece, I could:</b> ${esc(r.unlocks)}</span><span class="hint">Effort: ${esc(r.effort)}</span><div class="row"><button type="button" class="link-btn" data-talk>Discuss</button><button type="button" class="link-btn" data-dismiss style="color:var(--muted)">Not for me</button></div></div>`);
+    n.querySelector("[data-dismiss]").onclick = () => { D.usage.dismissed.push(r.id); store.save(); renderAbilities(); };
+    n.querySelector("[data-talk]").onclick = () => { showView("chat"); $("input").value = `Walk me through this recommendation and what it would take at BMCC: ${r.title}`; autosize(); $("input").focus(); };
+    list.append(n);
+  }
+  if (!recs.length) list.append(h(`<p class="dempty">No recommendations yet. I suggest connectors and skills after I see where I get stuck (${D.usage.turns} conversation turn${D.usage.turns === 1 ? "" : "s"} so far). Nothing is invented to fill this space.</p>`));
+  const ask = page.querySelector("#askIdeas");
+  if (ask) ask.onclick = () => {
+    const u = D.usage;
+    const stats = { turns: u.turns, intents: u.intents, approvedButNotRun: u.notExecuted, proposed: u.proposed, sourceKinds: u.sourceKinds, limitsAskedAbout: u.capabilityAsks, topicsWithNoSkill: u.noSkillTopics, skillModes: Object.fromEntries(Object.entries(u.skillModes).slice(0, 25)) };
+    showView("chat");
+    send(`Based only on these usage counts from O.T.T.E.R. (no content), recommend up to three new connectors, skills or setup changes that would help me most. For each: what you noticed, why I can't do it now, the missing piece, and what it would let you do. Only name connectors you know exist; otherwise describe the kind of connector. Counts: ${JSON.stringify(stats)}`);
+  };
+  el.replaceChildren(page);
 }
 
 // ---------- prefs & wiring ----------
@@ -918,6 +1213,16 @@ function wire() {
     D.settings.theme = dark ? "light" : "dark"; applyPrefs(); store.save();
   };
   $("addSourceBtn").onclick = () => openSourceModal();
+  const vp = $("voicePop");
+  $("voiceBtn").onclick = (e) => { e.stopPropagation(); vp.hidden = !vp.hidden; $("voiceBtn").setAttribute("aria-expanded", String(!vp.hidden)); if (!vp.hidden) { renderVoicePop(); readSystemVolume().then(renderVoicePop); } };
+  document.addEventListener("click", (e) => { if (!vp.hidden && !vp.contains(e.target) && !$("voiceBtn").contains(e.target)) vp.hidden = true; });
+  $("vpOn").onchange = (e) => { D.settings.voiceOn = e.target.checked; if (!e.target.checked) speaker.stop(); store.save(); renderVoicePop(); };
+  $("vpVol").oninput = (e) => { D.settings.voiceVolume = +e.target.value / 100; $("vpVolVal").textContent = e.target.value + "%"; store.save(); };
+  $("vpVol").onchange = () => { if (D.settings.voiceOn) speaker.speak(`This is my speaking volume, ${Math.round(D.settings.voiceVolume * 100)} percent.`, { mode: "full" }); };
+  $("vpConv").onchange = (e) => { D.settings.conversationMode = e.target.checked; if (!e.target.checked) stopConversation(); store.save(); };
+  $("vpTest").onclick = () => { const c = speaker.supported ? speaker.choice() : null; if (!c?.voice && speaker.supported) toast("No male voice is available, so the browser's default voice will be used."); speaker.speak(`Hello, I'm Otter. This is how I sound at ${Math.round(D.settings.voiceVolume * 100)} percent.`, { mode: "full" }); };
+  $("micBtn").onclick = () => { if (listener.active) { stopConversation(); return; } startConversation(); };
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && speaker.speaking) speaker.stop(); });
   $("stopBtn").onclick = () => busy?.abort();
   const input = $("input");
   input.oninput = () => { autosize(); if (!busy) setActivity(input.value.trim() ? "listening" : "idle"); };
@@ -978,7 +1283,12 @@ async function boot() {
   renderEngine();
   engine = await detectEngine();
   renderEngine();
+  await listener.checkOnDevice();
+  renderVoicePop();
+  renderGrowCount();
   if (currentView === "chat" && !current.messages.length) renderConversation();
-  if (!D.settings.onboarded) runOnboarding();
+  if (!D.settings.onboarded) runOnboarding({ onDone: launchChecks });
+  else if (!D.settings.voiceOnboarded) runOnboarding({ only: "voice", onDone: launchChecks });
+  else launchChecks();
 }
 boot();

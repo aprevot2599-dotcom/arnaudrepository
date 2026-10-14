@@ -19,6 +19,7 @@
       <button data-view="skills" class="nav-btn"><span class="ico" aria-hidden="true">&#10070;</span><span class="lbl">Skills</span><span id="skillCount" class="count"></span></button>
       <button data-view="tasks" class="nav-btn"><span class="ico" aria-hidden="true">&#10003;</span><span class="lbl">Tasks</span><span id="queueCount" class="count warn" hidden></span></button>
       <button data-view="research" class="nav-btn"><span class="ico" aria-hidden="true">&#8981;</span><span class="lbl">Research</span></button>
+      <button data-view="abilities" class="nav-btn"><span class="ico" aria-hidden="true">&#10022;</span><span class="lbl">Abilities &amp; growth</span><span id="growCount" class="count" hidden></span></button>
       <button data-view="settings" class="nav-btn"><span class="ico" aria-hidden="true">&#9881;</span><span class="lbl">Settings</span></button>
     </nav>
     <div class="history-head"><span>History</span><select id="groupBy" aria-label="Group history by"><option value="date">by date</option><option value="project">by project</option></select></div>
@@ -34,12 +35,21 @@
       </div>
       <div class="top-actions">
         <button id="convMenuBtn" class="icon-btn" aria-label="Conversation options" title="Pin, project, export, delete">&#8943;</button>
+        <button id="voiceBtn" class="icon-btn" aria-label="Voice and volume" title="Voice and volume" aria-expanded="false" aria-controls="voicePop"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path id="voiceWaves" d="M13 7.2a4 4 0 0 1 0 5.6M15.2 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
         <button id="dashBtn" class="btn btn-ghost" aria-expanded="false" aria-controls="dashboard">Dashboard</button>
         <button id="themeBtn" class="icon-btn" aria-label="Toggle light or dark" title="Light / dark"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></svg></button>
       </div>
       <div class="avatar-wrap" aria-live="polite">
         <div id="otter" class="otter" role="img" aria-label="O.T.T.E.R. is idle"></div>
         <div id="otterCaption" class="otter-caption">Ready</div>
+      </div>
+      <div id="voicePop" class="menu voice-pop" hidden>
+        <label class="switch"><input id="vpOn" type="checkbox"><span>Speak answers</span></label>
+        <label class="field"><span>Speaking volume <b id="vpVolVal" class="mono"></b></span><input id="vpVol" type="range" min="0" max="100" step="5"></label>
+        <div class="hint" id="vpVoice"></div>
+        <label class="switch"><input id="vpConv" type="checkbox"><span>Conversation mode: listen after I speak</span></label>
+        <div id="vpSys" class="vp-sys"></div>
+        <button type="button" class="link-btn" id="vpTest">Test voice</button>
       </div>
       <div id="convMenu" class="menu" hidden role="menu">
         <button data-act="pin" role="menuitem">Pin conversation</button>
@@ -53,12 +63,14 @@
     <section id="view-chat" class="view active" aria-label="Chat">
       <div id="messages" class="messages" aria-live="polite"></div>
       <div class="composer">
+        <div id="convBanner" class="conv-banner" hidden></div>
         <div id="sourceTray" class="source-tray"></div>
         <div id="thinkingLine" class="thinking-line" hidden><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="thinkingText">Checking the evidence…</span><button id="stopBtn" class="link-btn">Stop</button></div>
         <form id="composer" class="composer-box" autocomplete="off">
           <button type="button" id="addSourceBtn" class="icon-btn attach" aria-label="Add an email or document" title="Add an authorized email or document">&#43;</button>
           <label class="sr" for="input">Message O.T.T.E.R.</label>
           <textarea id="input" rows="1" placeholder="Ask, paste a thread, or describe a decision. Enter sends, Shift+Enter adds a line."></textarea>
+          <button type="button" id="micBtn" class="icon-btn mic" aria-label="Talk to O.T.T.E.R." aria-pressed="false" title="Talk"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="2.5" width="6" height="10" rx="3" fill="currentColor"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
           <button id="sendBtn" class="btn btn-primary send" type="submit">Send</button>
         </form>
         <p class="composer-note">O.T.T.E.R. drafts and proposes. Nothing is sent, submitted or changed until you approve it.</p>
@@ -69,6 +81,7 @@
     <section id="view-skills" class="view" aria-label="Skill Registry"></section>
     <section id="view-tasks" class="view" aria-label="Tasks and approvals"></section>
     <section id="view-research" class="view" aria-label="Research"></section>
+    <section id="view-abilities" class="view" aria-label="Abilities and growth"></section>
     <section id="view-settings" class="view" aria-label="Settings"></section>
   </main>
 

@@ -56,6 +56,9 @@ export const SYSTEMS = {
   desktop: { label: "Desktop control (computer use)", protected: true, kind: "browser" },
   claude_memory: { label: "Claude memory", protected: false, kind: "ai_service" },
   local_knowledge: { label: "O.T.T.E.R. local knowledge base", protected: false, kind: "local" },
+  system_volume: { label: "This computer's volume (local server only)", protected: false, kind: "device" },
+  browser_speech: { label: "Listening: browser speech recognition (audio may go to Google, Microsoft or Apple)", protected: false, kind: "ai_service" },
+  cloud_voice: { label: "Online voices: answer text sent to Microsoft or Google to be spoken", protected: false, kind: "ai_service" },
 };
 
 const SCOPE_RANK = { none: 0, read: 1, write: 2 };
@@ -161,6 +164,7 @@ export const ACTION_TYPES = {
   skill_handoff: { label: "Hand off to a Claude skill", system: "claude_ai", external: true },
   save_knowledge: { label: "Save to O.T.T.E.R. knowledge base", system: "local_knowledge", external: false },
   create_task: { label: "Add task to O.T.T.E.R. task list", system: "local_knowledge", external: false },
+  set_system_volume: { label: "Change this computer's volume", system: "system_volume", external: true },
 };
 
 export const STATUS_LABELS = {

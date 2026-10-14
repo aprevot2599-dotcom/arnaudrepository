@@ -111,6 +111,17 @@ code, .mono { font-family: var(--f-mono); font-size: .86em; }
 .menu button { border: 0; background: none; text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
 .menu button:hover { background: var(--surface-2); }
 .danger { color: var(--bad); }
+.voice-pop { right: 150px; min-width: 280px; max-width: calc(100vw - 32px); gap: 10px; padding: 12px; }
+.voice-pop input[type=range] { width: 100%; accent-color: var(--river); }
+.vp-sys { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; font-size: 13px; }
+.vp-sys .btn { padding: 4px 10px; font-size: 13px; }
+.mic.on { background: var(--bad-soft); color: var(--bad); animation: micpulse 1.4s ease-in-out infinite; }
+@keyframes micpulse { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 4px var(--bad-soft); } }
+.conv-banner { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; background: var(--river-soft); border: 1px solid var(--river); border-radius: 8px; padding: 6px 8px 6px 12px; margin-bottom: 6px; }
+.conv-banner .cb-text { flex: 1 1 220px; }
+.conv-banner .btn { padding: 4px 10px; font-size: 13px; }
+.caps-table { min-width: 900px; }
+.caps-table td { min-width: 150px; }
 
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-weight: 600; font-size: 14px; }
 .btn:hover { border-color: var(--river); }
@@ -161,6 +172,9 @@ code, .mono { font-family: var(--f-mono); font-size: .86em; }
 .callout-finding, .callout-question { border-left-color: var(--muted); } .callout-finding > header, .callout-question > header { color: var(--muted); }
 .callout-discrepancy, .callout-risk { border-left-color: var(--warn); background: var(--warn-soft); } .callout-discrepancy > header, .callout-risk > header { color: var(--warn); }
 .callout-opportunity { border-left-color: var(--ok); background: var(--ok-soft); } .callout-opportunity > header { color: var(--ok); }
+.callout-limitation { border-left-color: var(--fur); } .callout-limitation > header { color: var(--fur); }
+.callout-suggestion { border-left-color: var(--river); background: var(--river-soft); } .callout-suggestion > header { color: var(--river); }
+.callout ul { margin: .3em 0; }
 .callout-draft { border-left-color: var(--fur); background: var(--fur-soft); border-style: dashed; border-left-style: solid; } .callout-draft > header { color: var(--fur); }
 .plan { font-size: 12.5px; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; padding: 6px 10px; }
 .plan summary { cursor: pointer; }
@@ -305,6 +319,7 @@ code, .mono { font-family: var(--f-mono); font-size: .86em; }
   .otter-caption { display: none; }
   #dashBtn { padding: 6px 10px; }
   .menu { right: 16px; }
+  .voice-pop { right: 16px; left: 16px; min-width: 0; }
   .approval dl { grid-template-columns: minmax(0, 1fr); }
   .data-table .hide-narrow { display: none; }
 }
@@ -353,6 +368,10 @@ code, .mono { font-family: var(--f-mono); font-size: .86em; }
 .otter.s-idle .pupils { animation: look 7s ease-in-out infinite; }
 .otter.s-listening .head-g { transform: rotate(-8deg); }
 .otter.s-listening .ear { transform: translateY(-2px) scale(1.12); }
+.otter .mouth-flat { transform-box: fill-box; transform-origin: center; }
+.otter.s-speaking .mouth-flat { animation: talk .2s ease-in-out infinite alternate; }
+.otter.s-speaking .head-g { animation: bob 1.6s ease-in-out infinite; }
+@keyframes talk { from { transform: scaleY(1); } to { transform: scaleY(2.8); } }
 .otter.s-thinking .body-g { animation: bob 2.4s ease-in-out infinite; }
 .otter.s-thinking.act-floating .body-g { animation: float 3s ease-in-out infinite; }
 .otter.s-thinking.act-floating .water-g { opacity: 1; }

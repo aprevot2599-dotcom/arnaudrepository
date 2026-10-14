@@ -55,6 +55,7 @@ const SVG = `
 export const STATES = {
   idle: "Ready",
   listening: "Listening",
+  speaking: "Speaking",
   thinking: "Working on it",
   researching: "Researching",
   reading_email: "Reading the thread",

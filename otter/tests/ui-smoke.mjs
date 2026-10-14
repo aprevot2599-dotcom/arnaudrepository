@@ -35,7 +35,8 @@ const fake = {
   },
 };
 
-const { server, port } = createServer({ client: fake, port: 4391 });
+const volCalls = [];
+const { server, port } = createServer({ client: fake, port: 4391, volumeBackend: { available: true, platform: "linux", tool: "pactl", method: "pactl (fake)" }, volumeRunner: async (c, a) => { volCalls.push(a); return " 45% "; } });
 await new Promise((r) => server.listen(4391, "127.0.0.1", r));
 const browser = await chromium.launch();
 const fails = [];
@@ -50,7 +51,12 @@ try {
   await page.waitForSelector("#obBody");
   check(await page.locator("#modalTitle").first().textContent().then((t) => /safe boundaries/.test(t)), "onboarding opens on first run");
   await page.check("#ob1");
+  await page.click("#obNext");
+  check(await page.locator("#modalTitle").textContent() === "Voice and conversation", "voice setup step is shown");
+  check(await page.isChecked("#obV4"), "computer volume control is offered and pre-selected as requested");
   for (let i = 0; i < 5; i++) await page.click("#obNext");
+  await page.waitForSelector("#convBanner:not([hidden])");
+  check(await page.locator("#convBanner").textContent().then((t) => /20% volume/.test(t)), "launch banner offers to set the computer to 20%");
   check(await page.locator("#enginePill").textContent().then((t) => /Claude API/.test(t) && !/not approved/.test(t)), "engine pill shows approved Claude API");
   await page.screenshot({ path: path.join(out, "1-empty-light.png") });
 
@@ -96,6 +102,32 @@ try {
   check(await page.locator(".data-table tbody tr.expandable").count() >= 20, "skill registry lists BMCC skills");
   await page.screenshot({ path: path.join(out, "5-skills.png") });
 
+  // voice commands run locally, without Claude
+  await page.click('[data-view="chat"]');
+  let r0 = round;
+  await page.fill("#input", "louder");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("text=Speaking volume is now 35%");
+  check(round === r0, "\"louder\" raised speaking volume to 35% without calling Claude");
+  await page.fill("#input", "set computer volume to 50%");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(".approval dl");
+  check(await page.locator(".approval").textContent().then((t) => /volume to 50%/.test(t)), "computer volume request opens the approval panel");
+  check(volCalls.every((a) => a[0] !== "set-sink-volume" || a[2] !== "50%"), "nothing changed before approval");
+  await page.waitForTimeout(800);
+  await page.click(".approval .btn-ok");
+  await page.waitForSelector(".approval .status-executed");
+  check(volCalls.some((a) => a[0] === "set-sink-volume" && a[2] === "50%"), "approved volume change ran through the server");
+  await page.click(".approval .actions .btn >> nth=0");
+  await page.screenshot({ path: path.join(out, "8-voice-commands.png") });
+
+  // abilities view explains limits in three parts
+  await page.click('[data-view="abilities"]');
+  await page.waitForSelector(".caps-table");
+  const caps = await page.locator(".caps-table").textContent();
+  check(/Read your Outlook mailbox/.test(caps) && /BMCC IT approval/.test(caps), "abilities table explains the Outlook limit and the missing piece");
+  await page.screenshot({ path: path.join(out, "9-abilities.png") });
+
   // settings and audit log must not contain the email body
   await page.click('[data-view="settings"]');
   const auditText = await page.locator("#auditLog").textContent();
@@ -104,6 +136,7 @@ try {
 
   // privacy guard: a message with an SSN never leaves
   await page.click('[data-view="chat"]');
+  await page.click("#newChat");
   const before = round;
   await page.fill("#input", "Student SSN 123-45-6789, what should I do?");
   await page.keyboard.press("Enter");

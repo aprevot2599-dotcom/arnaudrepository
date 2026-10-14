@@ -2,6 +2,8 @@
 // written to an external database. Conversations older than the retention window are
 // purged on load, and the whole store can be exported or wiped from Settings.
 
+import { emptyUsage } from "../core/advisor.js";
+
 const KEY = "otter.v1";
 
 export const DEFAULT_SETTINGS = {
@@ -18,10 +20,19 @@ export const DEFAULT_SETTINGS = {
   theme: "system",
   disabledSkills: [],
   onboarded: false,
+  voiceOn: true,
+  voiceVolume: 0.2,
+  voiceRate: 1,
+  voiceName: "",
+  speakMode: "summary",
+  conversationMode: true,
+  systemVolumeAtLaunch: true,
+  launchVolume: 20,
+  voiceOnboarded: false,
 };
 
 function blank() {
-  return { version: 1, conversations: [], sources: {}, findings: [], proposals: [], audit: [], knowledge: [], projects: [], tasks: [], permissions: {}, settings: { ...DEFAULT_SETTINGS }, counters: { source: 0 } };
+  return { version: 1, conversations: [], sources: {}, findings: [], proposals: [], audit: [], knowledge: [], projects: [], tasks: [], permissions: {}, settings: { ...DEFAULT_SETTINGS }, counters: { source: 0 }, usage: emptyUsage() };
 }
 
 export class Store {
@@ -36,7 +47,7 @@ export class Store {
       const raw = this.storage?.getItem(KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        this.data = { ...blank(), ...parsed, settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) } };
+        this.data = { ...blank(), ...parsed, settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) }, usage: { ...emptyUsage(), ...(parsed.usage || {}) } };
       }
     } catch {
       this.available = false;

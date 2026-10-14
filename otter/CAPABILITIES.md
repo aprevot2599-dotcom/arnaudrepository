@@ -1,6 +1,6 @@
 # O.T.T.E.R. capability report
 
-Checked on 2026-10-14 in the build environment (a Claude Code cloud container). "Working" means exercised by an automated test or the browser smoke test, not just written.
+Checked on 2026-10-14 (voice and volume added the same day) in the build environment (a Claude Code cloud container). "Working" means exercised by an automated test or the browser smoke test, not just written.
 
 ## What discovery found
 - **38 Claude skills** on disk (`~/.claude/skills/synced/...`, plus two plugin skills), 25 of them BMCC-specific. All are in the Skill Registry with inferred dependencies and sensitivity.
@@ -25,6 +25,10 @@ Checked on 2026-10-14 in the build environment (a Claude Code cloud container). 
 | History, projects, tasks, knowledge base | Local to the browser. Search, pin, group, export, delete, retention purge. |
 | Animated otter | 15 states driven by real events, 8 rotating thinking activities, reduced-motion option, light and dark. |
 | Audit log | Proposals, approvals, results, blocks, permission and privacy changes. No content. |
+| Spoken answers in a male voice | Browser speech. Picks the most natural male voice; never falls back to a female or novelty voice. 20% speaking volume by default. Works in both versions. |
+| Local voice commands | Louder, quieter, set volume, mute, listening on and off. No Claude usage. |
+| Self-knowledge of limits | Every limit explained as why / missing piece / what it unlocks, from live status. Claude is told the same list and must use the same format. |
+| Growth recommendations | Connector, skill and setup suggestions from usage counts, with evidence, paced to one every three days unless urgent. |
 
 ## Unavailable, and why
 | Feature | Reason | What would change it |
@@ -34,12 +38,18 @@ Checked on 2026-10-14 in the build environment (a Claude Code cloud container). 
 | Sending, replying, forwarding, posting, submitting forms | No authorized integration. Approved items come back to you as final text. | An approved integration per system, added as an executor behind the same gate. |
 | Running skill scripts (docx, xlsx, PDF, form fillers) | They execute inside Claude Code, Cowork or Claude in Chrome, not in a browser page. | Run them there; O.T.T.E.R. prepares the brief. |
 | Web research in the claude.ai version | The artifact runtime gives Claude no web access. | Use the local server with an API key. |
+| Listening in the claude.ai version | claude.ai pages are not allowed to use the microphone. | The local server version in Chrome, Edge or Safari. |
+| Computer volume in the claude.ai version | No web page may change the computer's volume. | The local server version, which uses the operating system's own volume command. |
+| Studio-quality voice | Browser voices are the ceiling without an outside text-to-speech service. | A text-to-speech provider account, BMCC approval to send answer text to it, and a build step. |
 | Syncing history across devices | Deliberately local to keep institutional content off outside databases. | A BMCC-approved storage location. |
 
 ## Authorization-dependent
 | Feature | Needs |
 |---|---|
 | Any Claude call | Your confirmation that BMCC permits the service (setup question 1 or Settings). |
+| Conversation mode (listening) | Local server version, Chrome/Edge/Safari, your OK in setup (audio goes to Google, Microsoft or Apple for transcription), and the browser's microphone permission. |
+| Most natural voices | Your OK in setup to send spoken text to Microsoft or Google. Otherwise only on-device voices are used. |
+| Computer volume | Local server version and your permission; then one approval per change, including the 20% setting at launch. Windows and macOS commands not yet run on a real machine. |
 | Web research | Permission toggle (Settings > Permissions > Public web research). |
 | Student education-record content | FERPA lawful basis and a named BMCC approver recorded in Settings. Off by default. `synergy-parent-notification` stays restricted until then. |
 | Skills that touch protected systems | A per-system grant with a stated purpose. Grants today only let plans reference them; no integration runs. |
