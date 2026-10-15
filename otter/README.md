@@ -80,6 +80,9 @@ Reports are kept for 30 days in `data/local/verification/` (git-ignored).
 ## Decisions
 Every open decision, with my recommendation and the current default: [DECISIONS.md](DECISIONS.md).
 
+## The screen
+The default **Simple** layout puts the otter in the middle with six starting points (Just talk, What's on my plate?, Make sense of an email, Check some numbers, Help me decide, What can you do?) and three buttons under the message box: **Talk**, **Add email or doc**, **Send**. A brown "needs your OK" button appears at the top whenever something is waiting for approval. Tap the otter when it says "tap to review" to open what's waiting; tap it any other time and it does a trick. History, projects, skills, tasks, research, abilities and settings live under the **menu** (top left); your dashboard is **My day**. Each answer's token count is one line under it, with **details** for the skill plan. Prefer the old three-pane view? Settings > Personal > Layout > Full.
+
 ## Daily use
 - **Chat.** Enter sends, Shift+Enter adds a line. Answers come bottom line first, with labeled cards for recommendations, discrepancies, opportunities, risks, questions and drafts. Long answers collapse; every answer has Copy.
 - **Add source (+).** Paste or upload an email thread or document you are authorized to analyze. A privacy scan runs as you paste: passwords, SSNs and card numbers cannot be added, student-record details stay local unless FERPA processing is authorized, and contact details are replaced with placeholders before sending. Pasting a long email into the message box moves it into a source automatically.

@@ -41,6 +41,7 @@ const { server, port } = createServer({ client: fake, port: 4391, volumeBackend:
 await new Promise((r) => server.listen(4391, "127.0.0.1", r));
 const browser = await chromium.launch();
 const fails = [];
+const nav = async (p, v) => { await p.click("#openSide"); await p.click(`[data-view="${v}"]`); };
 const check = (cond, msg) => { if (!cond) fails.push(msg); console.log((cond ? "PASS " : "FAIL ") + msg); };
 
 try {
@@ -50,15 +51,18 @@ try {
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto(`http://127.0.0.1:${port}/`);
   await page.waitForSelector("#obBody");
-  check(await page.locator("#modalTitle").first().textContent().then((t) => /safe boundaries/.test(t)), "onboarding opens on first run");
+  check(await page.locator("#modalTitle").first().textContent().then((t) => /Hi, I.m Otter/.test(t)), "onboarding opens on first run");
   await page.check("#ob1");
   await page.click("#obNext");
   check(await page.locator("#modalTitle").textContent() === "Voice and conversation", "voice setup step is shown");
   check(await page.isChecked("#obV4"), "computer volume control is offered and pre-selected as requested");
-  for (let i = 0; i < 5; i++) await page.click("#obNext");
+  while (await page.isVisible("#obNext")) await page.click("#obNext");
   await page.waitForSelector("#convBanner:not([hidden])");
   check(await page.locator("#convBanner").textContent().then((t) => /20% volume/.test(t)), "launch banner offers to set the computer to 20%");
   check(await page.locator("#enginePill").textContent().then((t) => /Claude API/.test(t) && !/not approved/.test(t)), "engine pill shows approved Claude API");
+  check(await page.locator(".tile").count() === 6, "start screen shows six friendly action tiles");
+  await page.click("#otterBtn");
+  check(await page.locator("#otter").getAttribute("class").then((c) => /trick/.test(c)), "tapping the otter makes it do a trick");
   await page.screenshot({ path: path.join(out, "1-empty-light.png") });
 
   // add an email source
@@ -101,15 +105,16 @@ try {
   check(await page.locator(".dsec").first().textContent().then((t) => /Action queue/.test(t)), "dashboard opens with action queue");
   check(await page.locator("#dashBody").textContent().then((t) => /Cohort headcount/.test(t)), "verified finding appears in discrepancy monitor");
   await page.screenshot({ path: path.join(out, "4-dashboard.png") });
+  await page.click("#dashClose");
 
   // skills view
-  await page.click('[data-view="skills"]');
+  await nav(page, "skills");
   await page.waitForSelector(".data-table tbody tr");
   check(await page.locator(".data-table tbody tr.expandable").count() >= 20, "skill registry lists BMCC skills");
   await page.screenshot({ path: path.join(out, "5-skills.png") });
 
   // voice commands run locally, without Claude
-  await page.click('[data-view="chat"]');
+  await nav(page, "chat");
   let r0 = round;
   await page.fill("#input", "louder");
   await page.keyboard.press("Enter");
@@ -129,7 +134,7 @@ try {
   await page.screenshot({ path: path.join(out, "8-voice-commands.png") });
 
   // abilities view explains limits in three parts
-  await page.click('[data-view="abilities"]');
+  await nav(page, "abilities");
   await page.waitForSelector(".caps-table");
   const caps = await page.locator(".caps-table").textContent();
   check(/Read your Outlook mailbox/.test(caps) && /BMCC IT approval/.test(caps), "abilities table explains the Outlook limit and the missing piece");
@@ -140,20 +145,20 @@ try {
   await page.screenshot({ path: path.join(out, "9-abilities.png") });
 
   // settings and audit log must not contain the email body
-  await page.click('[data-view="settings"]');
+  await nav(page, "settings");
   const auditText = await page.locator("#auditLog").textContent();
   check(!/14 students|budget too/.test(auditText) && /action\.approved/.test(auditText), "audit log records approval without content");
   await page.screenshot({ path: path.join(out, "6-settings.png"), fullPage: false });
 
   // privacy guard: a message with an SSN never leaves
-  await page.click('[data-view="chat"]');
-  await page.click("#newChat");
+  await nav(page, "chat");
+  await page.click("#openSide"); await page.click("#newChat");
   const before = round;
   await page.fill("#input", "Student SSN 123-45-6789, what should I do?");
   await page.keyboard.press("Enter");
   await page.waitForSelector(".notice.bad");
   check(round === before, "SSN message was blocked before reaching Claude");
-  check(await page.locator("#otter").getAttribute("class").then((c) => /s-privacy/.test(c)), "otter raises the privacy shield");
+  check(await page.waitForFunction(() => /s-privacy/.test(document.getElementById("otter").className), null, { timeout: 8000 }).then(() => true, () => false), "otter raises the privacy shield");
 
   // phone width, dark
   const m = await browser.newPage({ viewport: { width: 390, height: 820 }, colorScheme: "dark" });

@@ -192,7 +192,7 @@ function renderEngine() {
 
 // ---------- conversations ----------
 function newConversation() {
-  current = { id: newId("c"), title: "New conversation", createdAt: Date.now(), updatedAt: Date.now(), messages: [], sourceIds: [], pinned: false, projectId: null };
+  current = { id: newId("c"), title: "O.T.T.E.R.", createdAt: Date.now(), updatedAt: Date.now(), messages: [], sourceIds: [], pinned: false, projectId: null };
   renderConversation();
   renderHistory();
   showView("chat");
@@ -268,6 +268,7 @@ function renderHistory() {
 // ---------- messages ----------
 function renderConversation() {
   $("convTitle").textContent = current.title;
+  $("stage").classList.toggle("compact", current.messages.length > 0);
   const box = $("messages");
   box.replaceChildren();
   if (!current.messages.length) box.append(emptyState());
@@ -277,17 +278,21 @@ function renderConversation() {
 }
 
 function emptyState() {
-  const starters = [
-    ["Decision", "Should BMCC launch a short-term CDL or welding certificate in the West End? Give me the decision frame and what evidence we need."],
-    ["Email", "Summarize the attached thread: deadlines (explicit vs inferred), what I've committed to, and what others owe me."],
-    ["Discrepancy", "Compare the attached budget and the grant narrative. Do the numbers agree?"],
-    ["Triage", "Here's what's on my plate this week. Sort it by consequence and tell me what to drop."],
+  const tiles = [
+    { cls: "t-talk", title: "Just talk", sub: "Tell me what's on your mind", act: () => startConversation() },
+    { cls: "t-plate", title: "What's on my plate?", sub: "I'll sort it by what matters", act: () => send("Here's what's on my plate. Help me sort it by what matters most and tell me what to drop. I'll list it next.") },
+    { cls: "t-email", title: "Make sense of an email", sub: "Paste a thread, I'll find deadlines and asks", act: () => openSourceModal({ kind: "email" }) },
+    { cls: "t-numbers", title: "Check some numbers", sub: "Budgets, enrollments, totals that don't add up", act: () => openSourceModal({ kind: "document" }) },
+    { cls: "t-decide", title: "Help me decide", sub: "Options, costs, risks, a clear recommendation", act: () => { $("input").value = "Help me decide: "; autosize(); $("input").focus(); } },
+    { cls: "t-can", title: "What can you do?", sub: "And what you can't, and why", act: () => showView("abilities") },
   ];
-  const n = h(`<div class="empty-chat"><h2>What needs attention?</h2><p class="lead">Ask a question, describe a decision, or add an email or document you're authorized to analyze. O.T.T.E.R. coordinates your ${registry.length || ""} discovered Claude skills and proposes actions for your approval; it never sends anything itself.</p><div class="starter-grid"></div></div>`);
-  const g = n.querySelector(".starter-grid");
-  for (const [k, t] of starters) {
-    const b = h(`<button class="starter"><b>${k}</b>${esc(t)}</button>`);
-    b.onclick = () => { $("input").value = t; autosize(); $("input").focus(); };
+  const hour = new Date().getHours();
+  const hello = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const n = h(`<div class="empty-chat"><h2>${hello}, Arnaud.</h2><p class="lead">What should we tackle?</p><div class="tile-grid"></div></div>`);
+  const g = n.querySelector(".tile-grid");
+  for (const t of tiles) {
+    const b = h(`<button type="button" class="tile ${t.cls}"><b>${esc(t.title)}</b><span>${esc(t.sub)}</span></button>`);
+    b.onclick = t.act;
     g.append(b);
   }
   return n;
@@ -317,7 +322,7 @@ function refreshProposalCards() {
 function messageNode(m) {
   const isUser = m.role === "user";
   const n = h(`<article class="msg msg-${m.role}" data-msg="${m.id}"><div class="msg-meta"><span class="who">${isUser ? "You" : "O.T.T.E.R."}</span><span>${fmtTime(m.ts)}</span></div></article>`);
-  if (!isUser) { const p = planNode(m.plan, m.skillsUsed); if (p) n.append(p); }
+
   if (m.notice) n.append(h(`<div class="notice ${m.notice.kind || ""}">${esc(m.notice.text)}</div>`));
   const bubble = h(`<div class="bubble"></div>`);
   if (isUser) bubble.textContent = m.content;
@@ -332,7 +337,13 @@ function messageNode(m) {
     for (const s of m.citations) c.querySelector("ol").append(h(`<li><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a>${s.pageAge ? ` <span class="hint">(${esc(s.pageAge)})</span>` : ' <span class="hint">(date not given)</span>'}</li>`));
     n.append(c);
   }
-  if (!isUser && (m.route || m.local)) n.append(usageLine(m));
+  if (!isUser && (m.route || m.local)) {
+    const foot = h(`<details class="msg-foot"><summary></summary></details>`);
+    foot.querySelector("summary").append(usageLine(m));
+    const p = planNode(m.plan, m.skillsUsed);
+    if (p) { p.open = true; foot.append(p); } else foot.append(h(`<div class="hint">No skills were needed for this one.</div>`));
+    n.append(foot);
+  }
   if (!isUser && m.content) {
     const tools = h(`<div class="msg-tools"><button type="button" data-copy>Copy</button>${m.route?.upgrade && m.question ? `<button type="button" data-deeper>Go deeper: ${esc(TIERS[m.route.upgrade.tier].label.toLowerCase())} route, about ${fmtTokens(m.route.upgrade.estimate.total)} tokens</button>` : ""}${bubble.classList.contains("collapsed") ? '<button type="button" data-expand>Show all</button>' : ""}</div>`);
     tools.querySelector("[data-copy]").onclick = () => copyText(m.content, bubble);
@@ -452,6 +463,7 @@ async function send(text, { forceTier = null, confirmed = false } = {}) {
   $("input").value = "";
   autosize();
   if (current.messages.length === 1) $("messages").replaceChildren();
+  $("stage").classList.add("compact");
   $("messages").append(messageNode(userMsg));
   $("convTitle").textContent = current.title;
   renderHistory();
@@ -794,6 +806,7 @@ function renderSettings() {
       <div class="card"><h3>Personal</h3>
         <label class="field"><span>Names and addresses that mean "me" in email threads</span><input id="myNames" type="text" value="${esc(S.myNames.join(", "))}"></label>
         <label class="field"><span>Briefing format</span><input id="briefing" type="text" value="${esc(S.briefingFormat)}"></label>
+        <label class="field"><span>Layout</span><select id="layoutSel"><option value="simple">Simple (otter front and center)</option><option value="full">Full (sidebar, dashboard, details)</option></select></label>
         <label class="field"><span>Theme</span><select id="themeSel"><option value="system">Match system</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
         <label class="switch"><input id="glasses" type="checkbox" ${S.glasses ? "checked" : ""}><span>Reading glasses on the otter</span></label>
         <label class="switch"><input id="motion" type="checkbox" ${S.reduceMotion ? "checked" : ""}><span>Reduce motion</span></label></div>
@@ -848,6 +861,8 @@ function renderSettings() {
   $$("#sLaunch").onchange = (e) => { S.systemVolumeAtLaunch = e.target.value !== "off"; if (S.systemVolumeAtLaunch) S.launchVolume = +e.target.value; store.save(); };
   $$("#myNames").onchange = (e) => { S.myNames = e.target.value.split(",").map((x) => x.trim()).filter(Boolean); store.save(); };
   $$("#briefing").onchange = (e) => { S.briefingFormat = e.target.value; store.save(); };
+  $$("#layoutSel").value = S.layout === "full" ? "full" : "simple";
+  $$("#layoutSel").onchange = (e) => { S.layout = e.target.value; applyPrefs(); store.save(); };
   $$("#themeSel").value = S.theme;
   $$("#themeSel").onchange = (e) => { S.theme = e.target.value; applyPrefs(); store.save(); };
   $$("#glasses").onchange = (e) => { S.glasses = e.target.checked; applyPrefs(); store.save(); };
@@ -920,7 +935,12 @@ function renderDashboard() {
 }
 
 function renderCounts() {
-  const n = gate.list().filter((p) => p.status === "pending").length;
+  const pend = gate.list().filter((p) => p.status === "pending");
+  const n = pend.length;
+  const ny = $("needsYou");
+  ny.hidden = !n;
+  ny.textContent = n === 1 ? "1 thing needs your OK" : `${n} things need your OK`;
+  ny.onclick = () => openApproval(pend[0].id);
   const q = $("queueCount");
   q.hidden = !n;
   q.textContent = n;
@@ -928,6 +948,9 @@ function renderCounts() {
 }
 
 // ---------- onboarding ----------
+function otterMini() {
+  return $("otter").querySelector("svg")?.outerHTML.replace(/class="(prop [^"]*)"/g, 'class="$1" style="display:none"') || "";
+}
 function runOnboarding({ only = null, onDone = null } = {}) {
   const S = D.settings;
   const svc = service();
@@ -944,16 +967,13 @@ function runOnboarding({ only = null, onDone = null } = {}) {
       ${engine.token && engine.cap?.systemVolume?.available ? `<label class="switch"><input id="obV4" type="checkbox" ${permissions.check("system_volume", "write") || !S.voiceOnboarded ? "checked" : ""}><span>Let O.T.T.E.R. change this computer's volume, starting at ${S.launchVolume}% when it opens. Every change still asks for your approval.</span></label>` : `<p class="hint"><b>Computer volume:</b> ${esc(volCap.why)} ${esc(volCap.missing)}</p>`}`;
   };
   const steps = [
-    () => `<h2 id="modalTitle">Welcome. A few questions to set safe boundaries.</h2><p>O.T.T.E.R. found <b>${registry.length}</b> Claude skills on disk (${registry.filter((s) => s.bmcc).length} BMCC-specific) and is connected to: <b>${esc(engine.label)}</b>.</p><p class="hint">${esc(engine.detail)}</p>${svc ? `<label class="switch"><input id="ob1" type="checkbox" ${serviceApproved() ? "checked" : ""}><span>BMCC permits sending non-protected work content to ${esc(SYSTEMS[svc].label)}.</span></label>` : "<p>No Claude connection yet, so only the built-in analyzers run. You can still set everything up.</p>"}`,
+    () => `<div class="ob-hero"><div class="ob-otter" aria-hidden="true">${otterMini()}</div><h2 id="modalTitle">Hi, I'm Otter.</h2><p>I help with email, numbers, decisions and your BMCC skills. I never send or change anything until you say OK.</p></div>${svc ? `<label class="switch big"><input id="ob1" type="checkbox" ${serviceApproved() || !S.onboarded ? "checked" : ""}><span>BMCC allows me to use ${esc(SYSTEMS[svc].label)} for everyday, non-student work.</span></label>` : `<p class="hint">I'm not connected to Claude yet, so only my built-in tools will work. You can still look around.</p>`}${engine.kind === "server" ? `<label class="switch"><input id="obWeb" type="checkbox" ${permissions.check("web_research", "read") ? "checked" : ""}><span>Let me search the web when you ask for deeper research.</span></label>` : ""}`,
     voiceStep,
-    () => `<h2 id="modalTitle">Email and Chrome</h2><p>BMCC blocks Claude's Microsoft 365 connector, and there is no supported way for this app to drive the Claude in Chrome extension. So O.T.T.E.R. never touches Outlook. You add threads yourself with <b>+ Add source</b> (paste, or upload a saved .eml or .txt).</p><label class="field"><span>Names and addresses that mean "you" in a thread (for tracking your commitments)</span><input id="ob2" type="text" value="${esc(S.myNames.join(", "))}"></label>${engine.kind === "server" ? `<label class="switch"><input id="obWeb" type="checkbox" ${permissions.check("web_research", "read") ? "checked" : ""}><span>Allow public web research (government, institutional and research sources, with citations).</span></label>` : ""}`,
-    () => `<h2 id="modalTitle">Priority projects</h2><label class="field"><span>One per line. Mark high priority with an asterisk, e.g. *Boardman CDL cohort</span><textarea id="ob3" rows="5" placeholder="*I2PA pre-apprenticeship grant&#10;Fall workshop lineup&#10;Union County COD renewal"></textarea></label><p class="hint">Skip if you prefer to add them later under Projects.</p>`,
-    () => `<h2 id="modalTitle">Briefing format</h2>${["Bottom line first, then reasoning, then a short action list.", "Tight bullet briefing: decision, numbers, risks, next steps.", "Short narrative memo a board member could read."].map((f, i) => `<label class="switch"><input type="radio" name="ob4" value="${esc(f)}" ${S.briefingFormat === f || (!i && !S.briefingFormat) ? "checked" : ""}><span>${esc(f)}</span></label>`).join("")}`,
-    () => `<h2 id="modalTitle">Storage and privacy</h2><p>This version runs locally: history, sources and knowledge stay in this browser on this device. Nothing goes to an outside database. Messages go to Claude only after the privacy guard checks them.</p><label class="field"><span>Delete unpinned conversations after</span><select id="ob5">${[[30, "30 days"], [90, "90 days"], [180, "180 days"], [365, "1 year"], [0, "Never"]].map(([v, l]) => `<option value="${v}" ${+S.retentionDays === v ? "selected" : ""}>${l}</option>`).join("")}</select></label><p class="hint">Student education-record processing (FERPA) is off. Turn it on only with written BMCC approval, in Settings > Privacy.</p>`,
+    () => `<h2 id="modalTitle">What are you working on?</h2><label class="field"><span>A few projects, one per line. Put a * in front of the urgent ones. (Optional.)</span><textarea id="ob3" rows="4" placeholder="*I2PA pre-apprenticeship grant&#10;Fall workshop lineup&#10;Union County COD renewal"></textarea></label><p class="hint">That's it. Briefing style, history and privacy settings have sensible defaults; change them any time under Menu > Settings.</p>`,
   ];
   if (only === "voice") steps.splice(0, steps.length, voiceStep);
   let i = 0;
-  const n = h(`<div><div class="step-dots" aria-hidden="true">${steps.map(() => "<i></i>").join("")}</div><div id="obBody"></div><div class="actions"><button type="button" class="btn" id="obSkip">Skip setup</button><button type="button" class="btn" id="obBack">Back</button><button type="button" class="btn btn-primary" id="obNext" data-autofocus>Next</button></div></div>`);
+  const n = h(`<div><div class="step-dots" aria-hidden="true">${steps.map(() => "<i></i>").join("")}</div><div id="obBody"></div><div class="actions"><button type="button" class="btn btn-ghost" id="obSkip">Skip for now</button><button type="button" class="btn" id="obBack">Back</button><button type="button" class="btn btn-primary" id="obNext" data-autofocus>Next</button></div></div>`);
   const close = openModal(n, { onClose: () => { S.onboarded = true; S.voiceOnboarded = true; store.save(); renderVoicePop(); onDone?.(); } });
   const collect = () => {
     const q = (s) => n.querySelector(s);
@@ -977,7 +997,7 @@ function runOnboarding({ only = null, onDone = null } = {}) {
     n.querySelector("#obBody").innerHTML = steps[i]();
     n.querySelectorAll(".step-dots i").forEach((d, j) => d.classList.toggle("on", j <= i));
     n.querySelector("#obBack").hidden = i === 0;
-    n.querySelector("#obNext").textContent = i === steps.length - 1 ? "Finish" : "Next";
+    n.querySelector("#obNext").textContent = i === steps.length - 1 ? "Let's go" : "Next";
   };
   n.querySelector("#obNext").onclick = () => { collect(); if (i < steps.length - 1) { i++; show(); } else { close(); renderDashboard(); toast("Setup saved. Change anything later in Settings."); } };
   n.querySelector("#obBack").onclick = () => { collect(); i = Math.max(0, i - 1); show(); };
@@ -1102,7 +1122,7 @@ const speaker = new Speaker({
 });
 const listener = new Listener({
   onInterim: (t) => { $("input").value = t; autosize(); },
-  onState: (on) => { $("micBtn").setAttribute("aria-pressed", String(on)); $("micBtn").classList.toggle("on", on); if (on) setActivity("listening"); else if (otter.state === "listening") setActivity("idle"); },
+  onState: (on) => { $("micBtn").setAttribute("aria-pressed", String(on)); $("micBtn").classList.toggle("on", on); $("micBtn").querySelector(".mic-label").textContent = on ? "Listening… tap to stop" : "Talk"; if (on) setActivity("listening"); else if (otter.state === "listening") setActivity("idle"); },
   onFinal: (t) => { $("input").value = ""; autosize(); send(t); },
   onError: (code) => {
     if (code === "silence") { if (conversationLive) setTimeout(() => conversationLive && !busy && !speaker.speaking && listener.start(), 300); return; }
@@ -1168,6 +1188,7 @@ function addLocalMessages(userText, replyMd, { speak = true, proposalIds = [] } 
   ensureSaved();
   if (userText) {
     if (!current.messages.length) { current.title = autoTitle(userText); $("convTitle").textContent = current.title; $("messages").replaceChildren(); }
+    $("stage").classList.add("compact");
     const um = { id: newId("m"), role: "user", content: userText, ts: Date.now(), local: true };
     current.messages.push(um);
     $("messages").append(messageNode(um));
@@ -1325,6 +1346,8 @@ function applyPrefs() {
   if (S.theme === "system") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.dataset.theme = S.theme;
   document.body.classList.toggle("reduce-motion", !!S.reduceMotion);
+  document.body.classList.toggle("simple", S.layout !== "full");
+  $("app").classList.toggle("side-collapsed", false);
   otter.glasses(S.glasses);
 }
 function closeSideOnNarrow() { $("app").classList.remove("side-open"); }
@@ -1335,7 +1358,23 @@ function wire() {
   $("groupBy").onchange = renderHistory;
   document.querySelectorAll(".nav-btn").forEach((b) => (b.onclick = () => showView(b.dataset.view)));
   $("collapseSide").onclick = () => $("app").classList.toggle("side-collapsed");
-  $("openSide").onclick = () => $("app").classList.add("side-open");
+  $("openSide").onclick = (e) => { e.stopPropagation(); $("app").classList.toggle("side-open"); };
+  document.addEventListener("click", (e) => { const a = $("app"); if (a.classList.contains("side-open") && !$("sidebar").contains(e.target) && !$("openSide").contains(e.target)) a.classList.remove("side-open"); });
+  const TRICKS = ["Splash! OK, back to work.", "Otters hold hands while they sleep so they don't drift apart. I hold your drafts until you approve them.", "Every otter has a favorite rock. Mine is the Approve button.", "Still here. Still not sending anything without you.", "Fun fact: a group of otters in the water is called a raft. You and me: a very small raft."];
+  let trickN = 0;
+  $("otterBtn").onclick = () => {
+    if (busy) return;
+    const waiting = gate.list().find((p) => p.status === "pending");
+    if (waiting && otter.state === "awaiting_approval") return openApproval(waiting.id);
+    const el = $("otter");
+    el.classList.remove("trick");
+    void el.offsetWidth;
+    el.classList.add("trick");
+    setTimeout(() => el.classList.remove("trick"), 1300);
+    $("otterCaption").textContent = TRICKS[trickN++ % TRICKS.length];
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => setActivity(otter.state), 5000);
+  };
   $("dashBtn").onclick = () => { const d = $("dashboard"); d.hidden = !d.hidden; $("dashBtn").setAttribute("aria-expanded", String(!d.hidden)); renderDashboard(); };
   $("dashClose").onclick = () => { $("dashboard").hidden = true; $("dashBtn").setAttribute("aria-expanded", "false"); };
   $("themeBtn").onclick = () => {

@@ -28,20 +28,17 @@
 
   <main class="main">
     <header class="topbar">
-      <button id="openSide" class="icon-btn only-narrow" aria-label="Open sidebar">&#9776;</button>
+      <button id="openSide" class="icon-btn menu-btn" aria-label="Open menu: history, projects, skills, settings" title="Menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       <div class="title-wrap">
         <h1 id="convTitle" class="conv-title">New conversation</h1>
         <div class="pills"><span id="enginePill" class="pill">Starting…</span><span id="privacyPill" class="pill pill-quiet" hidden></span></div>
       </div>
       <div class="top-actions">
+        <button id="needsYou" class="needs-you" hidden></button>
         <button id="convMenuBtn" class="icon-btn" aria-label="Conversation options" title="Pin, project, export, delete">&#8943;</button>
         <button id="voiceBtn" class="icon-btn" aria-label="Voice and volume" title="Voice and volume" aria-expanded="false" aria-controls="voicePop"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path id="voiceWaves" d="M13 7.2a4 4 0 0 1 0 5.6M15.2 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
-        <button id="dashBtn" class="btn btn-ghost" aria-expanded="false" aria-controls="dashboard">Dashboard</button>
+        <button id="dashBtn" class="btn btn-ghost" aria-expanded="false" aria-controls="dashboard">My day</button>
         <button id="themeBtn" class="icon-btn" aria-label="Toggle light or dark" title="Light / dark"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></svg></button>
-      </div>
-      <div class="avatar-wrap" aria-live="polite">
-        <div id="otter" class="otter" role="img" aria-label="O.T.T.E.R. is idle"></div>
-        <div id="otterCaption" class="otter-caption">Ready</div>
       </div>
       <div id="voicePop" class="menu voice-pop" hidden>
         <label class="switch"><input id="vpOn" type="checkbox"><span>Speak answers</span></label>
@@ -61,19 +58,26 @@
     </header>
 
     <section id="view-chat" class="view active" aria-label="Chat">
+      <div id="stage" class="stage">
+        <button type="button" id="otterBtn" class="otter-btn" aria-label="Pet the otter"><div id="otter" class="otter" role="img" aria-label="O.T.T.E.R. is idle"></div></button>
+        <div class="bubble-say" aria-live="polite"><span id="otterCaption" class="otter-caption">Ready</span></div>
+      </div>
       <div id="messages" class="messages" aria-live="polite"></div>
       <div class="composer">
         <div id="convBanner" class="conv-banner" hidden></div>
         <div id="sourceTray" class="source-tray"></div>
         <div id="thinkingLine" class="thinking-line" hidden><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="thinkingText">Checking the evidence…</span><button id="stopBtn" class="link-btn">Stop</button></div>
         <form id="composer" class="composer-box" autocomplete="off">
-          <button type="button" id="addSourceBtn" class="icon-btn attach" aria-label="Add an email or document" title="Add an authorized email or document">&#43;</button>
           <label class="sr" for="input">Message O.T.T.E.R.</label>
-          <textarea id="input" rows="1" placeholder="Ask, paste a thread, or describe a decision. Enter sends, Shift+Enter adds a line."></textarea>
-          <button type="button" id="micBtn" class="icon-btn mic" aria-label="Talk to O.T.T.E.R." aria-pressed="false" title="Talk"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="2.5" width="6" height="10" rx="3" fill="currentColor"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
-          <button id="sendBtn" class="btn btn-primary send" type="submit">Send</button>
+          <textarea id="input" rows="1" placeholder="Ask me anything, or tap Talk"></textarea>
+          <div class="composer-actions">
+            <button type="button" id="micBtn" class="pill-btn mic" aria-pressed="false" title="Talk"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="2.5" width="6" height="10" rx="3" fill="currentColor"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="mic-label">Talk</span></button>
+            <button type="button" id="addSourceBtn" class="pill-btn attach" title="Add an email or document you're allowed to share"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 6.5 7.8 12.2a1.6 1.6 0 0 0 2.3 2.3l6-6a3.2 3.2 0 0 0-4.6-4.6l-6 6a4.8 4.8 0 0 0 6.8 6.8l5-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Add email or doc</span></button>
+            <span class="spacer"></span>
+            <button id="sendBtn" class="btn btn-primary send" type="submit">Send</button>
+          </div>
         </form>
-        <p class="composer-note"><span id="routeHint" class="route-hint"></span>O.T.T.E.R. drafts and proposes. Nothing is sent, submitted or changed until you approve it.</p>
+        <p class="composer-note"><span id="routeHint" class="route-hint"></span><span class="safety-note">Nothing gets sent or changed until you say OK.</span></p>
       </div>
     </section>
 

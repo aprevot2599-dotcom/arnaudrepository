@@ -53,22 +53,22 @@ const SVG = `
 </svg>`;
 
 export const STATES = {
-  idle: "Ready",
-  listening: "Listening",
-  speaking: "Speaking",
-  thinking: "Working on it",
-  researching: "Researching",
-  reading_email: "Reading the thread",
-  analyzing: "Checking the numbers",
+  idle: "Ready when you are.",
+  listening: "I'm listening…",
+  speaking: "Talking…",
+  thinking: "Thinking it through…",
+  researching: "Digging into sources…",
+  reading_email: "Reading your email…",
+  analyzing: "Checking the numbers…",
   discrepancy: "Found something that doesn't match",
   conflict: "Weighing conflicting evidence",
   opportunity: "Spotted an opportunity",
-  drafting: "Drafting",
-  awaiting_approval: "Waiting for your approval",
+  drafting: "Writing a draft…",
+  awaiting_approval: "Your turn: tap to review.",
   privacy: "Privacy guard stopped this",
   locked: "Locked door: needs authorization",
-  done: "Done",
-  error: "Something went wrong",
+  done: "Done!",
+  error: "Hmm, that didn't work.",
 };
 
 // Activities shown while thinking. Discrepancy Alert and Permission Patrol are not in the

@@ -30,6 +30,7 @@ export const DEFAULT_SETTINGS = {
   launchVolume: 20,
   voiceOnboarded: false,
   askAboveTokens: 15000,
+  layout: "simple",
 };
 
 function blank() {
