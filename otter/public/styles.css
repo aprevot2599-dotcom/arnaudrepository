@@ -495,6 +495,48 @@ body:not(.simple) .stage { display: none; }
   #dashBtn { padding: 6px 10px; }
 }
 
+
+/* ---------- helper: otter-only mini view, mini chat, floating window ---------- */
+.mini-bar, .mini-hint { display: none; }
+body.mini .app, body.mini .app.side-collapsed { grid-template-columns: minmax(0, 1fr); }
+body.mini .sidebar, body.mini .dashboard { display: none; }
+body.mini .topbar { position: absolute; top: 0; left: 0; right: 0; min-height: 0; padding: 8px; background: none; border: 0; justify-content: center; z-index: 5; pointer-events: none; }
+body.mini .topbar > :not(.top-actions), body.mini .top-actions > :not(#needsYou) { display: none !important; }
+body.mini .top-actions, body.mini #needsYou { pointer-events: auto; }
+body.mini .main { position: relative; }
+body.mini .view:not(#view-chat) { display: none !important; }
+body.mini #view-chat { display: flex; }
+body.mini .messages, body.mini .composer { display: none; }
+body.mini .stage { flex: 1; justify-content: center; padding: 46px 12px 14px; gap: 10px; }
+body.mini .stage .otter, body.mini .stage.compact .otter { width: min(62vw, 46vh, 230px); height: min(62vw, 46vh, 230px); }
+body.mini .stage.compact { flex-direction: column; }
+body.mini .stage.compact .bubble-say { text-align: center; }
+body.mini .stage.compact .bubble-say::before { left: 50%; top: -7px; transform: translateX(-50%) rotate(45deg); }
+body.mini .bubble-say .otter-caption { font-size: 14px; color: var(--fg); }
+body.mini .mini-bar { display: flex; gap: 10px; }
+body.mini .mini-hint { display: block; font-size: 12px; color: var(--muted); text-align: center; min-height: 1.4em; }
+.mini-btn { width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--fg); display: grid; place-items: center; cursor: pointer; box-shadow: var(--shadow); transition: transform .15s, background .15s; }
+.mini-btn svg { width: 21px; height: 21px; }
+.mini-btn:hover { transform: translateY(-2px); color: var(--river); }
+.mini-btn.on { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); animation: micpulse 1.4s ease-in-out infinite; }
+/* mini chat: otter shrinks to the top, recent messages and the box appear below */
+body.mini.mini-chat .messages, body.mini.mini-chat .composer { display: flex; }
+body.mini.mini-chat .composer { display: block; padding: 6px 8px 8px; }
+body.mini.mini-chat .stage { flex: none; flex-direction: row; flex-wrap: wrap; justify-content: center; padding: 44px 8px 0; }
+body.mini.mini-chat .stage .otter { width: 52px; height: 52px; }
+body.mini.mini-chat .stage .bubble-say { text-align: left; padding: 4px 10px; box-shadow: none; }
+body.mini.mini-chat .stage .bubble-say::before { left: -7px; top: 50%; transform: translateY(-50%) rotate(-45deg); }
+body.mini.mini-chat .mini-hint { display: none; }
+body.mini.mini-chat .mini-bar { gap: 4px; }
+body.mini.mini-chat .mini-btn { width: 34px; height: 34px; box-shadow: none; }
+body.mini.mini-chat .mini-btn svg { width: 17px; height: 17px; }
+body.mini.mini-chat .messages { padding: 8px; font-size: 14px; }
+body.mini.mini-chat .empty-chat { display: none; }
+body.mini.mini-chat .composer-note, body.mini.mini-chat .conv-banner { display: none; }
+body.mini.mini-chat .pill-btn span { display: none; }
+.float-note { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; background: var(--bg); color: var(--fg); font-size: 16px; text-align: center; padding: 16px; z-index: 100; }
+#minBtn svg { width: 18px; height: 18px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }

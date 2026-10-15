@@ -1,5 +1,7 @@
 # Decisions for Dr. Prevot
 
+> **Update (helper window):** at your request every default is now on at first launch: Claude service approval, online voices, always-on listening, computer volume control and (local server) web research. Rows 1, 3, 4, 11 and 15 below are therefore set to "on" until you turn them off in Settings. Two new decisions are at the bottom (24, 25).
+
 Everything O.T.T.E.R. needs from you, in the order I'd make the calls. Each row has the options, my recommendation, what the build does until you decide, and what stays blocked meanwhile. Nothing here was decided on your behalf except safe defaults that can be changed in Settings.
 
 ## 1. Before using it for real BMCC work (needs BMCC, not just you)
@@ -44,3 +46,10 @@ Everything O.T.T.E.R. needs from you, in the order I'd make the calls. Each row 
 | 21 | Package O.T.T.E.R. as a Cowork plugin | Yes / later | Later, after a month of use. It's the route by which hand-off skills (forms, website, Word files) could run without copy and paste |
 | 22 | Premium neural voice | A text-to-speech vendor / browser voices | Browser voices first. A vendor means BMCC approval to send answer text out, plus a monthly bill |
 | 23 | A cloud scheduled task as well as the 5 a.m. check | Yes / no | No. It would cost Claude credits every morning and can't see your computer, only this repository |
+
+## 5. Helper window
+
+| # | Decision | Options | My recommendation | Until you decide |
+|---|---|---|---|---|
+| 24 | Always-on listening | Wake word "Otter" (current) / push-to-talk only / no wake word | Keep the wake word. Without it every word near your desk goes to Google and is sent to Claude, costing tokens and risking student or personnel details | Wake word on |
+| 25 | Where the helper runs | Your BMCC laptop / a personal computer | Ask BMCC IT before running it on a BMCC-managed machine: it installs Node.js, runs a local server, and opens Chrome with auto-allowed microphone in a separate profile | Your call |

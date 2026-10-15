@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
+    "helper": "node scripts/helper.js",
     "discover": "node scripts/discover-skills.js",
     "verify": "node scripts/verify.js",
     "build:artifact": "node scripts/build-artifact.js",

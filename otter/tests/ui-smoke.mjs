@@ -50,16 +50,24 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto(`http://127.0.0.1:${port}/`);
-  await page.waitForSelector("#obBody");
-  check(await page.locator("#modalTitle").first().textContent().then((t) => /Hi, I.m Otter/.test(t)), "onboarding opens on first run");
-  await page.check("#ob1");
-  await page.click("#obNext");
-  check(await page.locator("#modalTitle").textContent() === "Voice and conversation", "voice setup step is shown");
-  check(await page.isChecked("#obV4"), "computer volume control is offered and pre-selected as requested");
-  while (await page.isVisible("#obNext")) await page.click("#obNext");
+  await page.waitForSelector("body.mini");
+  check(true, "opens as just the otter (mini helper view)");
+  check(await page.isVisible("#miniBar") && await page.isVisible("#miniMax") && await page.isVisible("#miniChat"), "mini view shows microphone, chat and maximize buttons");
+  check(!(await page.isVisible("#messages")), "chat stays hidden until asked for");
+  check(await page.locator("#modalRoot").isHidden(), "no setup questions block first use");
+  check(await page.locator("#enginePill").textContent().then((t) => /Claude API/.test(t) && !/not approved/.test(t)), "defaults are on: Claude approved without a setup screen");
+  await page.click("#miniChat");
+  await page.waitForSelector("body.mini-chat #messages");
+  check(await page.locator("#messages").textContent().then((t) => /On by default/.test(t) && /Still off, on purpose/.test(t)), "first launch says exactly what was switched on and what stays off");
+  await page.screenshot({ path: path.join(out, "0-mini-chat.png") });
+  await page.click("#miniChat");
+  await page.screenshot({ path: path.join(out, "0-mini.png") });
+  await page.click("#miniMax");
+  await page.waitForSelector("body:not(.mini)");
+  check(true, "maximize opens the full view");
   await page.waitForSelector("#convBanner:not([hidden])");
   check(await page.locator("#convBanner").textContent().then((t) => /20% volume/.test(t)), "launch banner offers to set the computer to 20%");
-  check(await page.locator("#enginePill").textContent().then((t) => /Claude API/.test(t) && !/not approved/.test(t)), "engine pill shows approved Claude API");
+  await page.click("#openSide"); await page.click("#newChat");
   check(await page.locator(".tile").count() === 6, "start screen shows six friendly action tiles");
   await page.click("#otterBtn");
   check(await page.locator("#otter").getAttribute("class").then((c) => /trick/.test(c)), "tapping the otter makes it do a trick");
@@ -121,6 +129,15 @@ try {
   await page.waitForSelector("text=Speaking volume is now 35%");
   check(round === r0, "\"louder\" raised speaking volume to 35% without calling Claude");
   check(await page.locator(".usage-line").last().textContent().then((t) => /0 tokens/.test(t)), "local answers are labeled 0 tokens");
+  // learning: a stated preference is offered for memory and kept after "yes"
+  await page.fill("#input", "From now on, I prefer tables over long paragraphs.");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(".callout-question", { timeout: 15000 });
+  check(await page.locator(".callout-question").last().textContent().then((t) => /tables over long paragraphs/.test(t)), "O.T.T.E.R. asks before remembering a preference");
+  await page.fill("#input", "yes");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("text=Got it. I'll remember that.");
+  check(true, "saying yes keeps it");
   await page.fill("#input", "set computer volume to 50%");
   await page.keyboard.press("Enter");
   await page.waitForSelector(".approval dl");
@@ -138,6 +155,7 @@ try {
   await page.waitForSelector(".caps-table");
   const caps = await page.locator(".caps-table").textContent();
   check(/Read your Outlook mailbox/.test(caps) && /BMCC IT approval/.test(caps), "abilities table explains the Outlook limit and the missing piece");
+  check(await page.locator("#knowBox").textContent().then((t) => /tables over long paragraphs/.test(t) && /Bottom line first/.test(t)), "What I know about you shows the brief and the learned preference");
   await page.click("#runCheck");
   await page.waitForSelector("#verifyBox table");
   const vtext = await page.locator("#verifyBox").textContent();
@@ -163,8 +181,9 @@ try {
   // phone width, dark
   const m = await browser.newPage({ viewport: { width: 390, height: 820 }, colorScheme: "dark" });
   await m.goto(`http://127.0.0.1:${port}/`);
-  await m.waitForSelector("#obSkip");
-  await m.click("#obSkip");
+  await m.waitForSelector("body.mini");
+  await m.screenshot({ path: path.join(out, "7-phone-mini-dark.png") });
+  await m.click("#miniMax");
   const overflow = await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   check(!overflow, "no horizontal scroll at phone width");
   await m.screenshot({ path: path.join(out, "7-phone-dark.png") });

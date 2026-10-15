@@ -22,5 +22,24 @@ export function parseCommand(text) {
   if (/^(?:stop listening|pause listening|stop the conversation|end conversation|conversation off)(?: please)?$/.test(t)) return { kind: "listen_off" };
   if (/^(?:start listening|conversation on|let'?s talk|start (?:a )?conversation)(?: please)?$/.test(t)) return { kind: "listen_on" };
   if (/^(?:what(?:'s| is) (?:the |my )?volume|current volume|volume\??)$/.test(t)) return { kind: "volume_query", target };
+  if (/^(?:maximi[sz]e|full screen|open (?:the )?(?:full|big) (?:view|window|screen)|go big|expand)(?: (?:it|the window|please))*$/.test(t)) return { kind: "ui", ui: "maximize" };
+  if (/^(?:minimi[sz]e|shrink|go small|mini(?: mode)?|just the otter|get out of the way)(?: (?:it|the window|please))*$/.test(t)) return { kind: "ui", ui: "minimize" };
+  if (/^(?:(?:show|open)(?: me)? (?:the )?chat|let me type|type (?:it|instead))(?: please)?$/.test(t)) return { kind: "ui", ui: "chat" };
+  if (/^(?:hide|close) (?:the )?chat(?: please)?$/.test(t)) return { kind: "ui", ui: "hide_chat" };
+  if (/^(?:float|stay on top|pop out|float (?:on top|the window)|keep (?:it|yourself) on top)(?: please)?$/.test(t)) return { kind: "ui", ui: "float" };
+  if (/^(?:what do you know about me|what have you learned(?: about me)?|what do you remember(?: about me)?)\??$/.test(t)) return { kind: "profile" };
+  if (/^(?:yes|yeah|yep|sure|ok(?:ay)?|please do|remember (?:it|that)|keep it|go ahead)(?: please)?$/.test(t)) return { kind: "confirm", yes: true };
+  if (/^(?:no|nope|don't|do not|forget it|skip(?: it)?|never mind|nevermind)(?: thanks)?$/.test(t)) return { kind: "confirm", yes: false };
   return null;
+}
+
+// Wake word: in helper mode O.T.T.E.R. acts only on speech addressed to it ("Otter, ...") or
+// said within the follow-up window after it spoke. Speech recognizers often hear "otter" as
+// "other", "odder" or "auto", so those are accepted at the start of an utterance.
+const WAKE = /^\s*(?:hey |hi |ok |okay )?(?:otter|odder|other|auto|outer|ottar)\b[,.!?:;\s]*/i;
+export function parseWake(text, { followUp = false } = {}) {
+  const t = String(text || "").trim();
+  const m = t.match(WAKE);
+  if (m) return { addressed: true, text: t.slice(m[0].length).trim() };
+  return { addressed: !!followUp, text: t };
 }

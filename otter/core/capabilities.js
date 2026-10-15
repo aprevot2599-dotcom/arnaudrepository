@@ -48,6 +48,9 @@ export function assessCapabilities(env = {}) {
     add({ id: "system_volume", name: "Control your computer's volume", status: "needs_you", why: "Changing a system setting needs your permission.", missing: "Settings > Permissions > This computer's volume: read and write.", unlocks: "change the computer's volume, one approved change at a time." });
   else add({ id: "system_volume", name: "Control your computer's volume", status: "ready", can: `Through ${vol.method || "the operating system"}. Each change still asks for your approval.` });
 
+  add(env.floatSupported
+    ? { id: "float", name: "Float on top of other windows", status: "ready", can: "Chrome's always-on-top mini window." }
+    : { id: "float", name: "Float on top of other windows", status: env.engineKind === "artifact" ? "blocked" : "missing", why: env.engineKind === "artifact" ? "Pages inside claude.ai can't open Chrome's always-on-top window." : "This browser doesn't support always-on-top windows for web pages.", missing: "The O.T.T.E.R. helper (npm run helper) in Google Chrome 116 or newer, or Microsoft Edge.", unlocks: "stay on top of your other windows as a small otter you can talk to." });
   add({ id: "outlook_read", name: "Read your Outlook mailbox", status: "blocked", why: "BMCC does not allow Claude's Microsoft 365 connector, and I will not work around that through your browser session.", missing: "BMCC IT approval of a Microsoft 365 connector or a Microsoft Graph app registration with read-only mail scope.", unlocks: "triage your inbox daily and track commitments and deadlines without copy and paste." });
   add({ id: "send_email", name: "Send, reply or forward email", status: "blocked", why: "No authorized email integration exists, so an approved draft comes back to you to send.", missing: "The same BMCC-approved Microsoft 365 connection, with send permission.", unlocks: "send exactly what you approve, one approval per message." });
   add({ id: "calendar", name: "Check or schedule meetings", status: "missing", why: "O.T.T.E.R. has no calendar connection. BMCC meetings live in Outlook, which is blocked; a Google Calendar connector exists on your claude.ai account but isn't wired in.", missing: "For BMCC: an approved Outlook calendar connection. For personal: wiring the Google Calendar connector into O.T.T.E.R. with read-only permission.", unlocks: "find meeting times, prepare meeting briefs and propose invitations for your approval." });
@@ -67,6 +70,7 @@ const MATCHERS = [
   ["calendar", /\b(calendar|schedule (a|the)? ?meeting|availability|book (a|the) (time|meeting)|invite)\b/i],
   ["system_volume", /\b(computer|system|laptop|pc|mac) (volume|sound)|(volume|sound) (of|on) (the|my) (computer|laptop|pc|mac)\b/i],
   ["listen", /\b(hear me|listen|microphone|mic\b|talk to you|voice conversation|hands-?free)\b/i],
+  ["float", /\b(float|on top|always on top|pop ?out|picture in picture)\b/i],
   ["speak", /\b(male voice|your voice|sound (more )?(human|natural)|speak|talk (back|to me|out loud))\b/i],
   ["web_research", /\b(search the web|google|look (it )?up online|internet|web research|latest (news|data))\b/i],
   ["chrome_bridge", /\b(chrome|fill (out |in )?(the )?form|submit (the )?form|update the website|jotform|course request form)\b/i],

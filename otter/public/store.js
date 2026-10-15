@@ -31,6 +31,10 @@ export const DEFAULT_SETTINGS = {
   voiceOnboarded: false,
   askAboveTokens: 15000,
   layout: "simple",
+  viewMode: "mini",
+  autoListen: true,
+  wakeWord: true,
+  openDefaultsApplied: false,
 };
 
 function blank() {

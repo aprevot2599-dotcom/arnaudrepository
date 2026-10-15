@@ -9,13 +9,16 @@ import { scanSensitive, redact, redactForLog, detectInjection } from "../core/pr
 import { runTurn, artifactTransport, serverTransport, offlineTransport, offlineAnswer } from "../core/agent.js";
 import { assessCapabilities, matchCapabilities, explain, STATUS_TEXT } from "../core/capabilities.js";
 import { recordTurn, recordExecution, recommend, dueRecommendation, markShown, recommendationMarkdown } from "../core/advisor.js";
-import { parseCommand } from "../core/voicecmd.js";
+import { parseCommand, parseWake } from "../core/voicecmd.js";
+import { seedProfile, extractLearnables } from "../core/learn.js";
 import { chooseRoute, describeEstimate, fmtTokens, costUsd, TIERS } from "../core/router.js";
 import { buildReport, reportMarkdown, needsCatchUp } from "../core/verify.js";
 import { planRequest } from "../core/orchestrator.js";
 import { Speaker, Listener, vendorOf } from "./voice.js";
 
-const $ = (id) => document.getElementById(id);
+// DOC is the document the interface lives in: the page, or the floating window when popped out.
+let DOC = document;
+const $ = (id) => DOC.getElementById(id);
 const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 const fmtDate = (ts) => new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 const fmtTime = (ts) => new Date(ts).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -33,7 +36,7 @@ const savePerms = () => { D.permissions = permissions.toJSON(); store.save(); };
 
 const executors = {
   save_knowledge: async (run, p) => {
-    D.knowledge.push({ id: newId("kb"), title: run.target, text: run.content, provenance: `Approved from "${convById(p.conversationId)?.title || "a conversation"}"`, createdAt: Date.now(), updatedAt: Date.now(), expiresAt: null });
+    D.knowledge.push({ id: newId("kb"), title: run.target, text: run.content, tags: p.origin === "learning" ? ["learned"] : [], provenance: p.origin === "learning" ? `You said it, and said yes to remembering it (${new Date().toLocaleDateString()})` : `Approved from "${convById(p.conversationId)?.title || "a conversation"}"`, createdAt: Date.now(), updatedAt: Date.now(), expiresAt: null });
     store.save();
     return { ok: true, message: "Saved to the O.T.T.E.R. knowledge base on this device." };
   },
@@ -91,9 +94,10 @@ function openModal(node, { onClose } = {}) {
   const root = $("modalRoot"), m = $("modal");
   m.replaceChildren(node);
   root.hidden = false;
-  const close = () => { root.hidden = true; m.replaceChildren(); document.removeEventListener("keydown", esc_); onClose?.(); };
+  const doc = DOC;
+  const close = () => { root.hidden = true; m.replaceChildren(); doc.removeEventListener("keydown", esc_); onClose?.(); };
   const esc_ = (e) => { if (e.key === "Escape") close(); };
-  document.addEventListener("keydown", esc_);
+  doc.addEventListener("keydown", esc_);
   root.querySelector(".modal-scrim").onclick = close;
   (m.querySelector("[data-autofocus]") || m.querySelector("input,textarea,select,button"))?.focus();
   return close;
@@ -286,13 +290,15 @@ function emptyState() {
     { cls: "t-decide", title: "Help me decide", sub: "Options, costs, risks, a clear recommendation", act: () => { $("input").value = "Help me decide: "; autosize(); $("input").focus(); } },
     { cls: "t-can", title: "What can you do?", sub: "And what you can't, and why", act: () => showView("abilities") },
   ];
+  const used = D.usage.tiles || {};
+  tiles.sort((a, b) => (used[b.cls] || 0) - (used[a.cls] || 0));
   const hour = new Date().getHours();
   const hello = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const n = h(`<div class="empty-chat"><h2>${hello}, Arnaud.</h2><p class="lead">What should we tackle?</p><div class="tile-grid"></div></div>`);
   const g = n.querySelector(".tile-grid");
   for (const t of tiles) {
     const b = h(`<button type="button" class="tile ${t.cls}"><b>${esc(t.title)}</b><span>${esc(t.sub)}</span></button>`);
-    b.onclick = t.act;
+    b.onclick = () => { (D.usage.tiles ||= {})[t.cls] = ((D.usage.tiles || {})[t.cls] || 0) + 1; store.save(); t.act(); };
     g.append(b);
   }
   return n;
@@ -316,7 +322,7 @@ function proposalCard(id) {
   return n;
 }
 function refreshProposalCards() {
-  document.querySelectorAll("[data-proposal]").forEach((el) => el.replaceWith(proposalCard(el.dataset.proposal)));
+  DOC.querySelectorAll("[data-proposal]").forEach((el) => el.replaceWith(proposalCard(el.dataset.proposal)));
 }
 
 function messageNode(m) {
@@ -452,7 +458,7 @@ async function send(text, { forceTier = null, confirmed = false } = {}) {
   const cmd = parseCommand(text);
   if (cmd) { $("input").value = ""; autosize(); return handleCommand(cmd, text); }
   const route = routeFor(text, forceTier);
-  if (route.tier === "local") { $("input").value = ""; autosize(); return answerLocally(text, route); }
+  if (route.tier === "local") { $("input").value = ""; autosize(); const r = answerLocally(text, route); offerLearning(text); return r; }
   if (!confirmed && D.settings.askAboveTokens && route.estimate.total > D.settings.askAboveTokens) return preflight(text, route);
   if (engine.kind !== "offline" && !serviceApproved()) { askServiceApproval(() => send(text)); return; }
   ensureSaved();
@@ -555,7 +561,8 @@ async function send(text, { forceTier = null, confirmed = false } = {}) {
   });
   store.save();
   const spoken = reply.content || reply.notice?.text || "";
-  if (D.settings.voiceOn && spoken) speaker.speak(spoken); else afterSpeaking();
+  const speaking = D.settings.voiceOn && spoken ? speaker.speak(spoken) : (afterSpeaking(), Promise.resolve());
+  offerLearning(text, speaking);
   maybeSuggest();
 }
 
@@ -648,8 +655,8 @@ function openRevise(id) {
 // ---------- views ----------
 function showView(v) {
   currentView = v;
-  document.querySelectorAll(".view").forEach((el) => el.classList.toggle("active", el.id === "view-" + v));
-  document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
+  DOC.querySelectorAll(".view").forEach((el) => el.classList.toggle("active", el.id === "view-" + v));
+  DOC.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
   if (v === "skills") renderSkills();
   if (v === "projects") renderProjects();
   if (v === "tasks") renderTasks();
@@ -797,6 +804,8 @@ function renderSettings() {
         <label class="field"><span>Speed</span><select id="sRate">${[[0.9, "Slower"], [1, "Normal"], [1.1, "Faster"]].map(([v, l]) => `<option value="${v}" ${+S.voiceRate === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <label class="switch"><input id="sCloud" type="checkbox" ${permissions.check("cloud_voice", "read") ? "checked" : ""}><span>Allow online voices (most natural; spoken text goes to Microsoft or Google)</span></label>
         <label class="switch"><input id="sConv" type="checkbox" ${S.conversationMode ? "checked" : ""}><span>Conversation mode: listen after speaking</span></label>
+        <label class="switch"><input id="sAuto" type="checkbox" ${S.autoListen ? "checked" : ""}><span>Always listen while O.T.T.E.R. is open</span></label>
+        <label class="switch"><input id="sWake" type="checkbox" ${S.wakeWord ? "checked" : ""}><span>Only act when I say "Otter" first (saves tokens, ignores side conversations)</span></label>
         <label class="switch"><input id="sListen" type="checkbox" ${permissions.check("browser_speech", "read") ? "checked" : ""}><span>Allow listening (audio may go to ${esc(recognitionVendor())} for transcription)</span></label>
         <label class="switch"><input id="sSysVol" type="checkbox" ${permissions.check("system_volume", "write") ? "checked" : ""}><span>Allow changing this computer's volume (each change approved)</span></label>
         <label class="field"><span>Computer volume at launch</span><select id="sLaunch"><option value="off" ${!S.systemVolumeAtLaunch ? "selected" : ""}>Don't ask</option>${[10, 20, 30, 40, 50].map((v) => `<option value="${v}" ${S.systemVolumeAtLaunch && +S.launchVolume === v ? "selected" : ""}>Ask to set ${v}%</option>`).join("")}</select></label>
@@ -857,6 +866,8 @@ function renderSettings() {
   permToggle("#sCloud", "cloud_voice", "read", "Natural voice, enabled in Settings");
   permToggle("#sListen", "browser_speech", "read", "Conversation mode, enabled in Settings");
   permToggle("#sSysVol", "system_volume", "write", "Volume changes, each approved");
+  $$("#sAuto").onchange = (e) => { S.autoListen = e.target.checked; store.save(); };
+  $$("#sWake").onchange = (e) => { S.wakeWord = e.target.checked; store.save(); };
   $$("#sConv").onchange = (e) => { S.conversationMode = e.target.checked; if (!e.target.checked) stopConversation(); store.save(); };
   $$("#sLaunch").onchange = (e) => { S.systemVolumeAtLaunch = e.target.value !== "off"; if (S.systemVolumeAtLaunch) S.launchVolume = +e.target.value; store.save(); };
   $$("#myNames").onchange = (e) => { S.myNames = e.target.value.split(",").map((x) => x.trim()).filter(Boolean); store.save(); };
@@ -1123,10 +1134,12 @@ const speaker = new Speaker({
 const listener = new Listener({
   onInterim: (t) => { $("input").value = t; autosize(); },
   onState: (on) => { $("micBtn").setAttribute("aria-pressed", String(on)); $("micBtn").classList.toggle("on", on); $("micBtn").querySelector(".mic-label").textContent = on ? "Listening… tap to stop" : "Talk"; if (on) setActivity("listening"); else if (otter.state === "listening") setActivity("idle"); },
-  onFinal: (t) => { $("input").value = ""; autosize(); send(t); },
+  onFinal: (t) => { $("input").value = ""; autosize(); heard(t); },
   onError: (code) => {
     if (code === "silence") { if (conversationLive) setTimeout(() => conversationLive && !busy && !speaker.speaking && listener.start(), 300); return; }
+    if (code === "idle" && conversationLive && D.settings.autoListen) { listener.noSpeech = 0; setTimeout(() => conversationLive && !busy && !speaker.speaking && listener.start(), 1000); return; }
     conversationLive = false;
+    setMiniHint();
     if (code === "idle") banner("I paused listening after a long silence. Click the microphone to talk again.");
     else if (code === "not-allowed" || code === "service-not-allowed") banner("The browser blocked the microphone. Allow it in the address bar's site settings, then click the microphone.");
     else if (code === "network") banner("Listening needs the browser's online speech service, and it couldn't be reached.");
@@ -1152,7 +1165,7 @@ function voiceEnv() {
 function capEnv() {
   return {
     engineKind: engine.kind, serverRunning: !!engine.token, serviceApproved: serviceApproved(), webResearch: permissions.check("web_research", "read"),
-    speech: voiceEnv(), systemVolume: engine.cap?.systemVolume || {}, systemVolumePermitted: permissions.check("system_volume", "write"), ferpaAttested: D.settings.ferpaAttested,
+    speech: voiceEnv(), systemVolume: engine.cap?.systemVolume || {}, floatSupported: canFloat(), systemVolumePermitted: permissions.check("system_volume", "write"), ferpaAttested: D.settings.ferpaAttested,
   };
 }
 const capability = (id) => assessCapabilities(capEnv()).find((c) => c.id === id);
@@ -1161,7 +1174,32 @@ function advisorEnv() {
 }
 
 function canListen() { return listener.supported && !!engine.token && permissions.check("browser_speech", "read"); }
-function afterSpeaking() { if (conversationLive && canListen() && !busy && !listener.active) listener.start(); }
+function afterSpeaking() {
+  followUpUntil = Date.now() + 10000; // a reply right after O.T.T.E.R. speaks needs no wake word
+  if (conversationLive && canListen() && !busy && !listener.active) listener.start();
+}
+
+// Everything the microphone hears comes here. In helper mode only speech addressed to O.T.T.E.R.
+// ("Otter, ...") or said right after it spoke is acted on, so side conversations cost nothing.
+let followUpUntil = 0;
+let pushToTalk = false;
+function heard(t) {
+  const needsWake = D.settings.wakeWord && D.settings.autoListen && !pushToTalk;
+  const w = parseWake(t, { followUp: !needsWake || Date.now() < followUpUntil });
+  pushToTalk = false;
+  if (!w.addressed) {
+    $("otterCaption").textContent = "Not for me? Say \u201cOtter\u201d first.";
+    setTimeout(() => conversationLive && !busy && !speaker.speaking && !listener.active && listener.start(), 250);
+    return;
+  }
+  if (!w.text) {
+    followUpUntil = Date.now() + 10000;
+    if (D.settings.voiceOn) speaker.speak("Yes?", { mode: "full" }); else afterSpeaking();
+    $("otterCaption").textContent = "Yes?";
+    return;
+  }
+  send(w.text);
+}
 function startConversation() {
   const cap = capability("listen");
   if (cap.status !== "ready") { showLocalReply(explain(cap)); return; }
@@ -1169,6 +1207,7 @@ function startConversation() {
   hideBanner();
   speaker.stop();
   listener.start();
+  setMiniHint();
 }
 function stopConversation() { conversationLive = false; listener.stop(); }
 
@@ -1234,6 +1273,19 @@ async function handleCommand(cmd, text) {
     const cur = await readSystemVolume();
     if (cur == null || Number.isNaN(cur)) return addLocalMessages(text, "I couldn't read the computer's current volume, so I can't raise or lower it by a step. Say a number instead, for example \"set computer volume to 40%\".");
     return systemVolumeRequest(text, cur + cmd.step);
+  }
+  if (cmd.kind === "ui") {
+    if (cmd.ui === "maximize") setViewMode("max");
+    if (cmd.ui === "minimize") setViewMode("mini");
+    if (cmd.ui === "chat") { if (viewMode === "mini") toggleMiniChat(true); else $("input").focus(); }
+    if (cmd.ui === "hide_chat") toggleMiniChat(false);
+    if (cmd.ui === "float") return floatWindow();
+    return;
+  }
+  if (cmd.kind === "confirm") return answerLearning(cmd.yes, text);
+  if (cmd.kind === "profile") {
+    const mine = D.knowledge.filter((k) => k.tags?.includes("profile") || k.tags?.includes("learned"));
+    return addLocalMessages(text, mine.length ? `Here's what I know about you (0 tokens):\n\n${mine.map((k) => `- **${k.title}:** ${k.text}`).join("\n")}\n\nTo correct or forget any of it, open Menu > Abilities & growth.` : "Nothing yet.", { speak: false });
   }
   switch (cmd.kind) {
     case "volume_set": S.voiceVolume = cmd.level / 100; S.voiceOn = cmd.level > 0; reply = `Speaking volume is now ${cmd.level}%.`; break;
@@ -1315,6 +1367,7 @@ function renderAbilities() {
   const page = h(`<div class="page">
     <div><h2>Abilities and growth</h2><p class="lead">What I can do right now, what I can't and why, and the piece that would unlock it. This updates as you add permissions, connectors or the local server. Recommendations come from counts of what you ask for and where I get stuck, kept on this device. I never read past conversations to make them.</p></div>
     <div class="card"><div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="flex:1;margin:0">Grow O.T.T.E.R.</h3>${engine.kind !== "offline" ? '<button type="button" class="btn" id="askIdeas">Ask Claude for more ideas</button>' : ""}</div><div id="recList" class="findings-list"></div></div>
+    <div class="card"><h3>What I know about you</h3><p class="hint" style="margin:0">From your setup brief and things you said yes to remembering. It travels with every question so I ask less. Forget anything that's wrong.</p><div id="knowBox" class="findings-list"></div></div>
     <div class="card"><div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="flex:1;margin:0">Morning check</h3><button type="button" class="btn" id="runCheck">Run now (0 tokens)</button></div><div id="verifyBox"></div></div>
     <div class="card"><h3>What I can and can't do</h3>${capabilityReport()}</div>
   </div>`);
@@ -1326,6 +1379,13 @@ function renderAbilities() {
     list.append(n);
   }
   if (!recs.length) list.append(h(`<p class="dempty">No recommendations yet. I suggest connectors and skills after I see where I get stuck (${D.usage.turns} conversation turn${D.usage.turns === 1 ? "" : "s"} so far). Nothing is invented to fill this space.</p>`));
+  const kb = page.querySelector("#knowBox");
+  for (const k of D.knowledge.filter((x) => x.tags?.includes("profile") || x.tags?.includes("learned"))) {
+    const n = h(`<div class="ditem"><div class="row"><b>${esc(k.title)}</b><span class="tag">${k.tags.includes("learned") ? "learned" : "from your brief"}</span><button type="button" class="link-btn danger" style="margin-left:auto">Forget</button></div><span>${esc(k.text)}</span></div>`);
+    n.querySelector("button").onclick = () => { D.knowledge = D.knowledge.filter((x) => x !== k); audit.record("knowledge.forgotten", { id: k.id }); store.save(); renderAbilities(); };
+    kb.append(n);
+  }
+  if (!kb.children.length) kb.append(h(`<p class="dempty">Nothing yet.</p>`));
   const vb = page.querySelector("#verifyBox");
   const V = D.lastVerify;
   vb.innerHTML = V ? `<p class="hint" style="margin:0">Last run ${esc(new Date(V.ranAt).toLocaleString())} (${esc(V.trigger)}). ${esc(V.summary)} Claude tokens used: ${V.tokensUsed}.</p><div class="table-wrap"><table class="data-table"><thead><tr><th>Check</th><th>Result</th><th>Detail</th><th>How to fix</th></tr></thead><tbody>${V.checks.map((c) => `<tr><td>${esc(c.name)}</td><td><span class="st ${c.status === "pass" ? "st-available" : c.status === "warn" ? "st-unavailable" : "st-restricted"}">${c.status}</span></td><td>${esc(c.detail)}</td><td>${esc(c.fix || "")}</td></tr>`).join("")}</tbody></table></div><p class="hint">It runs at 5 a.m. when the local server is running and the computer is awake. Otherwise it runs the first time you open O.T.T.E.R. after 5 a.m.</p>` : `<p class="dempty">Not run yet.</p>`;
@@ -1340,26 +1400,172 @@ function renderAbilities() {
   el.replaceChildren(page);
 }
 
+// ---------- helper window: mini view, floating, learning ----------
+const params = new URLSearchParams(location.search);
+let viewMode = params.get("mode") === "max" ? "max" : params.get("mode") === "mini" ? "mini" : D.settings.viewMode || "mini";
+function setViewMode(m) {
+  if (m === "max" && pipWindow) { pipWindow.close(); }
+  viewMode = m;
+  D.settings.viewMode = m;
+  store.save();
+  if (m === "mini") toggleMiniChat(false);
+  applyPrefs();
+  // In the helper's own Chrome window, resize the window too (ignored in ordinary tabs).
+  try { if (!pipWindow) m === "mini" ? window.resizeTo(340, 460) : window.resizeTo(Math.min(1280, screen.availWidth), Math.min(900, screen.availHeight)); } catch {}
+  setMiniHint();
+}
+function toggleMiniChat(on) {
+  const b = DOC.body;
+  const next = on ?? !b.classList.contains("mini-chat");
+  b.classList.toggle("mini-chat", next);
+  if (next) { $("messages").scrollTop = $("messages").scrollHeight; $("input").focus(); }
+}
+function setMiniHint() {
+  const el = $("miniHint");
+  if (!el) return;
+  const cap = capability("listen");
+  el.textContent = cap.status !== "ready" ? "Tap the chat bubble to type." : conversationLive ? (D.settings.wakeWord && D.settings.autoListen ? "Listening. Say “Otter”, then what you need." : "Listening.") : "Tap the microphone to talk.";
+  $("miniMic").classList.toggle("on", conversationLive);
+  $("miniMic").setAttribute("aria-pressed", String(conversationLive));
+  $("miniFloat").hidden = !canFloat() || !!pipWindow;
+}
+
+// Floating: Chrome's Document Picture-in-Picture keeps a small window on top of every other
+// window. The whole interface moves into it and moves back when it closes.
+let pipWindow = null;
+function canFloat() { return "documentPictureInPicture" in window && window.top === window; }
+async function floatWindow() {
+  if (!canFloat()) return showLocalReply(explain(capability("float")), { speak: false });
+  if (pipWindow) return;
+  let pip;
+  try { pip = await window.documentPictureInPicture.requestWindow({ width: 320, height: 440 }); }
+  catch (e) { toast("Chrome needs a click on the float button to pop me out."); return; }
+  pipWindow = pip;
+  for (const n of document.querySelectorAll('link[rel="stylesheet"], style')) pip.document.head.append(n.cloneNode(true));
+  pip.document.title = "O.T.T.E.R.";
+  const nodes = ["app", "modalRoot", "toast"].map((id) => document.getElementById(id));
+  for (const n of nodes) pip.document.body.append(n);
+  DOC = pip.document;
+  bindDocEvents(DOC);
+  viewMode = "mini";
+  applyPrefs();
+  const note = h(`<div id="floatNote" class="float-note"><p>O.T.T.E.R. is floating on top of your other windows.</p><button type="button" class="btn btn-primary">Bring it back here</button></div>`);
+  note.querySelector("button").onclick = () => pip.close();
+  document.body.append(note);
+  pip.addEventListener("pagehide", () => {
+    for (const n of nodes) document.body.insertBefore(n, note);
+    note.remove();
+    DOC = document;
+    pipWindow = null;
+    applyPrefs();
+    setMiniHint();
+  });
+  setMiniHint();
+}
+
+// First launch: everything on, as requested, then say exactly what was turned on.
+function applyOpenDefaults() {
+  const S = D.settings;
+  const purpose = "On by default at first launch; turn off in Settings";
+  if (service()) approveService();
+  permissions.grant("browser_speech", "read", { purpose });
+  permissions.grant("cloud_voice", "read", { purpose });
+  permissions.grant("system_volume", "write", { purpose });
+  if (engine.kind === "server") permissions.grant("web_research", "read", { purpose });
+  savePerms();
+  Object.assign(S, { voiceOn: true, conversationMode: true, autoListen: true, wakeWord: true, onboarded: true, voiceOnboarded: true, openDefaultsApplied: true });
+  store.save();
+  renderEngine();
+  renderVoicePop();
+  const listenOk = capability("listen").status === "ready";
+  showLocalReply([
+    `Hi Arnaud, I'm Otter. Everything is switched on so you can just talk${listenOk ? ": say “Otter”, then what you need" : ""}.`,
+    "",
+    ":::finding",
+    "**On by default** (Menu > Settings turns any of it off)",
+    `- Claude answers (${engine.label})`,
+    "- Voice at 20% speaking volume, using the most natural male voice, including online voices (spoken text goes to Microsoft or Google)",
+    `- Listening, always on${listenOk ? "" : " where the browser allows it"}, acting only on “Otter…” (audio goes to the browser maker for transcription)`,
+    "- Computer volume control, starting at 20%, with your OK on each change",
+    engine.kind === "server" ? "- Web research on the deep route" : "",
+    "",
+    "**Still off, on purpose:** student-record processing (FERPA), and sending, posting or changing anything without your OK.",
+    ":::",
+  ].filter((l) => l !== null).join("\n"), { speak: false });
+  if (S.voiceOn) speaker.speak("Hi Arnaud, I'm Otter. Everything's on. Say Otter, then what you need.", { mode: "full" });
+}
+
+// Learning: after a turn, offer to remember lasting preferences and facts. Saving is local to
+// this device; a spoken or clicked "yes" approves exactly the fact shown.
+let pendingLearn = [];
+async function offerLearning(text, speakingDone = Promise.resolve()) {
+  const facts = extractLearnables(text, D.knowledge);
+  if (!facts.length) return;
+  pendingLearn = [];
+  for (const f of facts) {
+    const p = await gate.propose({ type: "save_knowledge", target: "About you", content: f, consequences: "Kept on this device and used to tailor answers. Forget it any time under Abilities & growth.", origin: "learning" });
+    p.conversationId = current?.id;
+    pendingLearn.push(p.id);
+  }
+  followUpUntil = Date.now() + 12000;
+  addLocalMessages(null, `:::question\nWant me to remember ${facts.length > 1 ? "these" : "this"}?\n${facts.map((f) => `- “${f}”`).join("\n")}\n:::\nSay “yes” or “no”, or use the buttons.`, { proposalIds: [...pendingLearn], speak: false });
+  // Ask out loud only after the answer has been spoken, so the question doesn't cut it off.
+  speakingDone.then(() => { if (D.settings.voiceOn && pendingLearn.length) speaker.speak(facts.length > 1 ? "Want me to remember those?" : "Want me to remember that?", { mode: "full" }); });
+}
+async function answerLearning(yes, text) {
+  const ids = pendingLearn.filter((id) => gate.get(id)?.status === "pending");
+  pendingLearn = [];
+  if (!ids.length) return addLocalMessages(text, yes ? "Okay." : "Okay, never mind.", { speak: true });
+  for (const id of ids) {
+    const p = gate.get(id);
+    if (yes) { gate.approve(id, { confirmDigest: p.digest, by: "you (spoken or typed yes)" }); await gate.execute(id); }
+    else gate.reject(id, { reason: "declined" });
+  }
+  addLocalMessages(text, yes ? "Got it. I'll remember that." : "Okay, I won't keep it.");
+}
+
 // ---------- prefs & wiring ----------
 function applyPrefs() {
   const S = D.settings;
-  if (S.theme === "system") document.documentElement.removeAttribute("data-theme");
-  else document.documentElement.dataset.theme = S.theme;
-  document.body.classList.toggle("reduce-motion", !!S.reduceMotion);
-  document.body.classList.toggle("simple", S.layout !== "full");
+  for (const d of new Set([document, DOC])) {
+    if (S.theme === "system") d.documentElement.removeAttribute("data-theme");
+    else d.documentElement.dataset.theme = S.theme;
+    d.body.classList.toggle("reduce-motion", !!S.reduceMotion);
+    d.body.classList.toggle("simple", S.layout !== "full");
+    d.body.classList.toggle("mini", viewMode === "mini");
+  }
   $("app").classList.toggle("side-collapsed", false);
   otter.glasses(S.glasses);
 }
 function closeSideOnNarrow() { $("app").classList.remove("side-open"); }
 
+// Click-outside and key handlers, bound to whichever document the interface is in.
+function bindDocEvents(doc) {
+  doc.addEventListener("click", (e) => {
+    const a = $("app");
+    if (a.classList.contains("side-open") && !$("sidebar").contains(e.target) && !$("openSide").contains(e.target)) a.classList.remove("side-open");
+    const vp = $("voicePop");
+    if (!vp.hidden && !vp.contains(e.target) && !$("voiceBtn").contains(e.target)) vp.hidden = true;
+    const menu = $("convMenu");
+    if (!menu.hidden && !menu.contains(e.target)) menu.hidden = true;
+  });
+  doc.addEventListener("keydown", (e) => { if (e.key === "Escape" && speaker.speaking) speaker.stop(); });
+}
+
 function wire() {
+  bindDocEvents(document);
+  $("miniMax").onclick = () => setViewMode("max");
+  $("minBtn").onclick = () => setViewMode("mini");
+  $("miniChat").onclick = () => toggleMiniChat();
+  $("miniFloat").onclick = () => floatWindow();
+  $("miniMic").onclick = () => { if (conversationLive) { stopConversation(); setMiniHint(); } else { pushToTalk = true; startConversation(); } };
   $("newChat").onclick = newConversation;
   $("searchChats").oninput = () => { historyLimit = PAGE; renderHistory(); };
   $("groupBy").onchange = renderHistory;
   document.querySelectorAll(".nav-btn").forEach((b) => (b.onclick = () => showView(b.dataset.view)));
   $("collapseSide").onclick = () => $("app").classList.toggle("side-collapsed");
   $("openSide").onclick = (e) => { e.stopPropagation(); $("app").classList.toggle("side-open"); };
-  document.addEventListener("click", (e) => { const a = $("app"); if (a.classList.contains("side-open") && !$("sidebar").contains(e.target) && !$("openSide").contains(e.target)) a.classList.remove("side-open"); });
+
   const TRICKS = ["Splash! OK, back to work.", "Otters hold hands while they sleep so they don't drift apart. I hold your drafts until you approve them.", "Every otter has a favorite rock. Mine is the Approve button.", "Still here. Still not sending anything without you.", "Fun fact: a group of otters in the water is called a raft. You and me: a very small raft."];
   let trickN = 0;
   $("otterBtn").onclick = () => {
@@ -1384,14 +1590,14 @@ function wire() {
   $("addSourceBtn").onclick = () => openSourceModal();
   const vp = $("voicePop");
   $("voiceBtn").onclick = (e) => { e.stopPropagation(); vp.hidden = !vp.hidden; $("voiceBtn").setAttribute("aria-expanded", String(!vp.hidden)); if (!vp.hidden) { renderVoicePop(); readSystemVolume().then(renderVoicePop); } };
-  document.addEventListener("click", (e) => { if (!vp.hidden && !vp.contains(e.target) && !$("voiceBtn").contains(e.target)) vp.hidden = true; });
+
   $("vpOn").onchange = (e) => { D.settings.voiceOn = e.target.checked; if (!e.target.checked) speaker.stop(); store.save(); renderVoicePop(); };
   $("vpVol").oninput = (e) => { D.settings.voiceVolume = +e.target.value / 100; $("vpVolVal").textContent = e.target.value + "%"; store.save(); };
   $("vpVol").onchange = () => { if (D.settings.voiceOn) speaker.speak(`This is my speaking volume, ${Math.round(D.settings.voiceVolume * 100)} percent.`, { mode: "full" }); };
   $("vpConv").onchange = (e) => { D.settings.conversationMode = e.target.checked; if (!e.target.checked) stopConversation(); store.save(); };
   $("vpTest").onclick = () => { const c = speaker.supported ? speaker.choice() : null; if (!c?.voice && speaker.supported) toast("No male voice is available, so the browser's default voice will be used."); speaker.speak(`Hello, I'm Otter. This is how I sound at ${Math.round(D.settings.voiceVolume * 100)} percent.`, { mode: "full" }); };
-  $("micBtn").onclick = () => { if (listener.active) { stopConversation(); return; } startConversation(); };
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && speaker.speaking) speaker.stop(); });
+  $("micBtn").onclick = () => { if (listener.active) { stopConversation(); return; } pushToTalk = true; startConversation(); };
+
   $("stopBtn").onclick = () => busy?.abort();
   const input = $("input");
   input.oninput = () => { autosize(); updateRouteHint(); if (!busy) setActivity(input.value.trim() ? "listening" : "idle"); };
@@ -1405,7 +1611,7 @@ function wire() {
   // conversation menu
   const menu = $("convMenu");
   $("convMenuBtn").onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; menu.querySelector('[data-act="pin"]').textContent = current?.pinned ? "Unpin conversation" : "Pin conversation"; };
-  document.addEventListener("click", (e) => { if (!menu.hidden && !menu.contains(e.target)) menu.hidden = true; });
+
   menu.onclick = async (e) => {
     const act = e.target.dataset.act;
     if (!act || !current) return;
@@ -1458,8 +1664,10 @@ async function boot() {
   if (currentView === "chat" && !current.messages.length) renderConversation();
   // Morning check: the server runs it at 5 a.m.; the page runs it at first open after 5 a.m.
   if (D.settings.onboarded && needsCatchUp(D.lastVerify?.ranAt)) await runMorningCheck("first open after 5 a.m.");
-  if (!D.settings.onboarded) runOnboarding({ onDone: launchChecks });
-  else if (!D.settings.voiceOnboarded) runOnboarding({ only: "voice", onDone: launchChecks });
-  else launchChecks();
+  if (seedProfile(D.knowledge)) store.save();
+  if (!D.settings.openDefaultsApplied) applyOpenDefaults();
+  launchChecks();
+  if (D.settings.autoListen && canListen()) startConversation();
+  setMiniHint();
 }
 boot();

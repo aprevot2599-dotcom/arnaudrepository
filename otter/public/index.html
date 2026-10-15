@@ -35,6 +35,7 @@
       </div>
       <div class="top-actions">
         <button id="needsYou" class="needs-you" hidden></button>
+        <button id="minBtn" class="icon-btn" aria-label="Shrink to just the otter" title="Just the otter"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 4v4H4M12 4v4h4M8 16v-4H4M12 16v-4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
         <button id="convMenuBtn" class="icon-btn" aria-label="Conversation options" title="Pin, project, export, delete">&#8943;</button>
         <button id="voiceBtn" class="icon-btn" aria-label="Voice and volume" title="Voice and volume" aria-expanded="false" aria-controls="voicePop"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path id="voiceWaves" d="M13 7.2a4 4 0 0 1 0 5.6M15.2 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
         <button id="dashBtn" class="btn btn-ghost" aria-expanded="false" aria-controls="dashboard">My day</button>
@@ -61,6 +62,13 @@
       <div id="stage" class="stage">
         <button type="button" id="otterBtn" class="otter-btn" aria-label="Pet the otter"><div id="otter" class="otter" role="img" aria-label="O.T.T.E.R. is idle"></div></button>
         <div class="bubble-say" aria-live="polite"><span id="otterCaption" class="otter-caption">Ready</span></div>
+        <div id="miniBar" class="mini-bar" role="toolbar" aria-label="Helper controls">
+          <button type="button" id="miniMic" class="mini-btn" aria-label="Listening on or off" title="Listening"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="2.5" width="6" height="10" rx="3" fill="currentColor"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+          <button type="button" id="miniChat" class="mini-btn" aria-label="Show chat" title="Chat"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 4.5h13v8.5H9l-3.5 3v-3h-2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
+          <button type="button" id="miniFloat" class="mini-btn" aria-label="Float on top of other windows" title="Float on top"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="9.5" width="6" height="5" rx="1" fill="currentColor"/></svg></button>
+          <button type="button" id="miniMax" class="mini-btn" aria-label="Maximize" title="Maximize"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 8V4h4M16 8V4h-4M4 12v4h4M16 12v4h-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+        </div>
+        <div id="miniHint" class="mini-hint"></div>
       </div>
       <div id="messages" class="messages" aria-live="polite"></div>
       <div class="composer">

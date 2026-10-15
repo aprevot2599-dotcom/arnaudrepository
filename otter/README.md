@@ -80,6 +80,22 @@ Reports are kept for 30 days in `data/local/verification/` (git-ignored).
 ## Decisions
 Every open decision, with my recommendation and the current default: [DECISIONS.md](DECISIONS.md).
 
+## The helper window (start here)
+O.T.T.E.R. opens as a small window showing just the otter, listening, with everything switched on.
+
+**Start it:** double-click `launch/OTTER Helper.command` (Mac) or `launch/OTTER Helper.bat` (Windows), or run `npm run helper`. It starts the local server and opens O.T.T.E.R. in its own 340×460 Chrome (or Edge) window. That window uses a separate browser profile (`data/local/chrome-profile`) where the microphone and sound are allowed from the start, so there is nothing to click through. Your normal Chrome is untouched.
+
+**API key:** Mac: put `export ANTHROPIC_API_KEY=sk-ant-...` in `~/.otter-env` (outside this folder). Windows: run `setx ANTHROPIC_API_KEY sk-ant-...` once, then open a new window.
+
+**Using it:**
+- Say **"Otter,"** then what you need: "Otter, what's on my plate?", "Otter, louder", "Otter, show chat", "Otter, maximize". Right after it speaks, you can answer without saying "Otter". Everything else it hears is ignored, so side conversations cost nothing.
+- Four round buttons under the otter: **microphone** (on/off), **chat** (type and read inside the small window), **float** (keeps the otter on top of every other window), **maximize** (the full screen). The ⤡ button in the full screen shrinks back to just the otter.
+- **Float** uses Chrome's always-on-top mini window (Chrome or Edge 116+). The whole helper moves into it; closing it brings O.T.T.E.R. back.
+- **Learning:** it starts from your setup brief (role, priorities, how you like to be talked to, recurring work). When you state a lasting preference or fact ("From now on…", "I prefer…", "Remember that…", "No, I meant…"), it asks "Want me to remember that?" and keeps it only on yes. "Otter, what do you know about me?" lists everything (0 tokens). Correct or forget anything under Abilities & growth > What I know about you. It never offers to remember contact details or anything about students.
+- **On by default at first launch:** Claude answers, voice at 20%, online natural voices, always-on listening with the "Otter" wake word, computer volume control (20% at start, your OK on each change), and web research on the local server. **Still off on purpose:** student-record processing (FERPA), and sending, posting or changing anything without your OK. Turn anything off under Menu > Settings.
+
+The claude.ai link shows the same otter-only start, but there it can't hear you or float, because claude.ai pages aren't allowed to use the microphone or open floating windows. It explains that if you ask.
+
 ## The screen
 The default **Simple** layout puts the otter in the middle with six starting points (Just talk, What's on my plate?, Make sense of an email, Check some numbers, Help me decide, What can you do?) and three buttons under the message box: **Talk**, **Add email or doc**, **Send**. A brown "needs your OK" button appears at the top whenever something is waiting for approval. Tap the otter when it says "tap to review" to open what's waiting; tap it any other time and it does a trick. History, projects, skills, tasks, research, abilities and settings live under the **menu** (top left); your dashboard is **My day**. Each answer's token count is one line under it, with **details** for the skill plan. Prefer the old three-pane view? Settings > Personal > Layout > Full.
 
@@ -98,7 +114,7 @@ The model can call exactly six tools (plus web search in local-server mode when 
 
 ## Tests
 ```bash
-npm test          # 38 tests: the 15 required fail-safes, email parsing, server boundaries, voice commands,
+npm test          # 44 tests: the 15 required fail-safes, email parsing, server boundaries, voice commands,
                   # volume control, self-knowledge, recommendations, routing, token estimates, morning check
 npm run verify    # the morning check, once, from the command line
 npm run test:ui   # browser smoke test (needs Playwright): onboarding, voice setup, launch volume prompt, voice
@@ -123,6 +139,9 @@ core/advisor.js           usage counts -> connector, skill and setup recommendat
 core/voicecmd.js          local volume, voice and listening commands
 core/router.js            cheapest-route-first routing and token estimates
 core/verify.js            morning check: schedule, browser checks, report
+core/learn.js             what O.T.T.E.R. knows about you and how it learns more
+scripts/helper.js         starts the server and opens the helper window in Chrome or Edge
+launch/                   double-click launchers for Mac and Windows
 lib/verify-server.js      morning check: server checks, scheduler, report storage
 scripts/verify.js         morning check for an operating-system scheduler
 lib/sysvolume.js          computer volume through the operating system (local server)

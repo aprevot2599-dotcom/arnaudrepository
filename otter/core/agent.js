@@ -9,6 +9,7 @@ import { analyzeEmail, findDiscrepancies, verifyEvidence, searchKnowledge } from
 import { planRequest, planSummary, handoffBrief } from "./orchestrator.js";
 import { ACTION_TYPES, SecurityError, skillStatus, SYSTEMS } from "./security.js";
 import { capabilitySummary, matchCapabilities, explain } from "./capabilities.js";
+import { profileText } from "./learn.js";
 
 export const DRAFT_TYPES = new Set(["send_email", "reply_email", "forward_email", "post_content", "edit_document"]);
 
@@ -26,7 +27,7 @@ export function activityForTool(name, input = {}) {
   }
 }
 
-export function buildSystemPrompt({ settings, plan, sources, knowledgeHits, mode, permissions, today, projects = [], capabilities = [], route = null }) {
+export function buildSystemPrompt({ settings, plan, sources, knowledgeHits, mode, permissions, today, projects = [], capabilities = [], route = null, profile = "" }) {
   const perms = Object.entries(SYSTEMS)
     .filter(([k]) => permissions.scope(k) !== "none")
     .map(([k, v]) => `${v.label}: ${permissions.scope(k)}`)
@@ -91,6 +92,9 @@ Other callout kinds: finding, discrepancy, opportunity, draft, question, risk, l
 Skill orchestration plan for this request (from Dr. Prevot's discovered Claude skills):
 ${planSummary(plan)}
 Skills in "analysis" mode: use their purpose to shape one integrated answer; call get_skill for detail. Skills in "handoff" mode run in Claude in Chrome or the Claude desktop app, which this app cannot reach: if the user wants one run, call propose_action with type "skill_handoff", target the skill name, and a brief as content. Skills marked blocked must not be used; say why if relevant. Never present several disconnected reports; give one recommendation and mention which skills informed it when useful.
+
+What you already know about Dr. Prevot (from the setup brief and facts he approved). Use it before asking; ask at most one pertinent question that this cannot answer, and never ask for something listed here. Do not offer to remember things; O.T.T.E.R. asks about that itself.
+${profile || "(nothing yet)"}
 
 Active projects entered by Dr. Prevot:
 ${projects.length ? projects.map((p) => `- ${p.name} [${p.priority || "normal"} priority, ${p.status || "active"}]${p.notes ? ": " + p.notes.slice(0, 200) : ""}`).join("\n") : "(none entered)"}
@@ -261,9 +265,9 @@ export async function runTurn({ transport, ctx, userText, history, onText = () =
   ctx.request = userText;
   ctx.citations = new Map();
   // Stored knowledge and project notes leave the device too, so they get the same redaction.
-  const knowledgeHits = searchKnowledge(ctx.knowledge, userText, inc.knowledge ?? 5).map((k) => ({ ...k, text: redact(k.text) }));
+  const knowledgeHits = searchKnowledge((ctx.knowledge || []).filter((k) => !k.tags?.includes("profile") && !k.tags?.includes("learned")), userText, inc.knowledge ?? 5).map((k) => ({ ...k, text: redact(k.text) }));
   const projects = (ctx.projects || []).map((p) => ({ ...p, notes: redact(p.notes || "") }));
-  const system = buildSystemPrompt({ settings: ctx.settings, plan, sources: ctx.sources, knowledgeHits, mode: transport.kind, permissions: ctx.permissions, today: new Date().toISOString().slice(0, 10), projects, capabilities: ctx.capabilities || [], route });
+  const system = buildSystemPrompt({ settings: ctx.settings, plan, sources: ctx.sources, knowledgeHits, mode: transport.kind, permissions: ctx.permissions, today: new Date().toISOString().slice(0, 10), projects, capabilities: ctx.capabilities || [], route, profile: redact(profileText(ctx.knowledge || [])) });
   const tools = buildTools(ctx).filter((t) => !inc.tools || inc.tools.includes(t.name)).map((t) => ({
     ...t,
     execute: async (input, toolCtx) => {
