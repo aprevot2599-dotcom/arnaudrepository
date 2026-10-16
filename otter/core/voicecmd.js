@@ -31,6 +31,7 @@ export function parseCommand(text) {
   if (/^(?:stop (?:looking|watching)|don'?t look|go to sleep|sleep|nap time)(?: please)?$/.test(t)) return { kind: "screen", on: false };
   if (/^(?:shut (?:down|off|it off|yourself off)|turn (?:off|yourself off)|power (?:off|down)|close otter|otter off|goodbye otter|good night)(?: please)?$/.test(t)) return { kind: "shutdown" };
   if (/^(?:done|i'?m done|all done|got it|that'?s it|that'?s all|finished|close (?:it|that|the list))(?: thanks| thank you)?$/.test(t)) return { kind: "done" };
+  if (/^(?:what did you (?:spot|notice|find)|anything i(?:'ve| have)? missed|what am i missing|what should i know)\??$/.test(t)) return { kind: "spotted" };
   if (/^(?:what do you know about me|what have you learned(?: about me)?|what do you remember(?: about me)?)\??$/.test(t)) return { kind: "profile" };
   if (/^(?:yes|yeah|yep|sure|ok(?:ay)?|please do|remember (?:it|that)|keep it|go ahead)(?: please)?$/.test(t)) return { kind: "confirm", yes: true };
   if (/^(?:no|nope|don't|do not|forget it|skip(?: it)?|never mind|nevermind)(?: thanks)?$/.test(t)) return { kind: "confirm", yes: false };

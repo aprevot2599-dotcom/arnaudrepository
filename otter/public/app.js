@@ -4,12 +4,13 @@
 import { mountOtter, STATES } from "./otter.js";
 import { renderMarkdown, esc } from "./markdown.js";
 import { Store } from "./store.js";
-import { PermissionRegistry, ApprovalGate, AuditLog, SYSTEMS, ACTION_TYPES, describeProposalStatus, skillStatus, newId } from "../core/security.js";
+import { assertAdvisorOnly, PermissionRegistry, ApprovalGate, AuditLog, SYSTEMS, ACTION_TYPES, describeProposalStatus, skillStatus, newId } from "../core/security.js";
 import { scanSensitive, redact, redactForLog, detectInjection } from "../core/privacy.js";
 import { runTurn, artifactTransport, serverTransport, offlineTransport, offlineAnswer, directTransport } from "../core/agent.js";
 import { Ledger, verifyChain, makeClosedFetch, ALLOWED_HOSTS } from "../core/ledger.js";
 import { findGuide, guideMarkdown } from "../core/m365guides.js";
 import { ScreenWatcher } from "./screen.js";
+import { spot, spottedMarkdown } from "../core/spotter.js";
 import { assessCapabilities, matchCapabilities, explain, STATUS_TEXT } from "../core/capabilities.js";
 import { recordTurn, recordExecution, recommend, dueRecommendation, markShown, recommendationMarkdown } from "../core/advisor.js";
 import { parseCommand, parseWake } from "../core/voicecmd.js";
@@ -73,6 +74,7 @@ executors.set_system_volume = async (run) => {
   }, 0);
   return { ok: true, message: `Computer volume set to ${j.level}%.` };
 };
+assertAdvisorOnly(executors);
 const gate = new ApprovalGate({ permissions, audit, executors, proposals: D.proposals });
 gate.listeners.add(() => { D.proposals = gate.list(); store.save(); renderCounts(); renderDashboard(); refreshProposalCards(); if (currentView === "tasks") renderTasks(); });
 
@@ -457,6 +459,7 @@ function openSourceModal(prefill = {}) {
     renderHistory();
     if (!current.messages.length) renderConversation();
     toast(`Added ${id}. Ask about it in your message.`);
+    runSpotter("new source");
   };
   scan();
 }
@@ -477,7 +480,7 @@ async function send(text, { forceTier = null, confirmed = false } = {}) {
   if (cmd) { $("input").value = ""; autosize(); return handleCommand(cmd, text); }
   // While O.T.T.E.R. is looking, a question takes a fresh snapshot along (and only then).
   let turnSnapshot = null;
-  if (watcher.active && engine.kind !== "offline" && engine.kind !== "artifact") turnSnapshot = await watcher.capture();
+  if (!screenOnHold() && watcher.active && engine.kind !== "offline" && engine.kind !== "artifact") turnSnapshot = await watcher.capture();
   const route = routeFor(text, forceTier, turnSnapshot ? 1 : 0);
   if (route.tier === "local") { $("input").value = ""; autosize(); const r = answerLocally(text, route); offerLearning(text); return r; }
   if (!confirmed && D.settings.askAboveTokens && route.estimate.total > D.settings.askAboveTokens) return preflight(text, route);
@@ -591,6 +594,7 @@ async function send(text, { forceTier = null, confirmed = false } = {}) {
   const speaking = D.settings.voiceOn && spoken ? speaker.speak(spoken) : (afterSpeaking(), Promise.resolve());
   offerLearning(text, speaking);
   maybeSuggest();
+  runSpotter("after an answer");
 }
 
 function askServiceApproval(then) {
@@ -840,6 +844,12 @@ function renderSettings() {
         <label class="switch"><input id="sSysVol" type="checkbox" ${permissions.check("system_volume", "write") ? "checked" : ""}><span>Allow changing this computer's volume (each change approved)</span></label>
         <label class="field"><span>Computer volume at launch</span><select id="sLaunch"><option value="off" ${!S.systemVolumeAtLaunch ? "selected" : ""}>Don't ask</option>${[10, 20, 30, 40, 50].map((v) => `<option value="${v}" ${S.systemVolumeAtLaunch && +S.launchVolume === v ? "selected" : ""}>Ask to set ${v}%</option>`).join("")}</select></label>
       </div></div>
+    <div class="card"><h3>Screen coaching</h3>
+      ${screenOnHold() ? `<p style="margin:0"><b>On hold</b> until BMCC gives full permission. The eye button is hidden and no screen picture can be sent.</p>
+      <div class="grid-2" style="gap:8px"><label class="field"><span>Approved by (BMCC office or person)</span><input id="scrApprover" type="text"></label><label class="field"><span>Date of written approval</span><input id="scrDate" type="date"></label></div>
+      <label class="switch"><input id="scrOk" type="checkbox"><span>BMCC has approved, in writing, sending screen pictures of Microsoft 365 apps to Claude.</span></label>
+      <div><button type="button" class="btn" id="scrRelease" disabled>Release the hold</button></div>` : `<p style="margin:0"><b>Released</b> on ${esc(S.screenApprovedOn || "")}, approved by ${esc(S.screenApprover || "")}. Recorded in the log.</p><div><button type="button" class="btn btn-bad" id="scrHold">Put back on hold</button></div>`}
+    </div>
     <div class="card"><h3>Permissions</h3><p class="hint" style="margin:0">Each system is separate: Outlook access says nothing about SharePoint or Banner, and read never implies write. A signed-in browser does not count. Protected systems need a stated purpose. Note that no integration for these systems exists yet, so a grant today only lets plans and approvals reference them.</p><div id="permList"></div></div>
     <div class="grid-2">
       <div class="card"><h3>Personal</h3>
@@ -862,6 +872,12 @@ function renderSettings() {
   const $$ = (s) => page.querySelector(s);
   if (svc) $$("#svcOk").onchange = (e) => (e.target.checked ? approveService() : revokeService(svc));
   $$("#rerunOnboard").onclick = () => runOnboarding();
+  if (page.querySelector("#scrRelease")) {
+    const ready = () => ($$("#scrRelease").disabled = !($$("#scrOk").checked && $$("#scrApprover").value.trim() && $$("#scrDate").value));
+    ["#scrOk", "#scrApprover", "#scrDate"].forEach((sel) => ($$(sel).oninput = $$(sel).onchange = ready));
+    $$("#scrRelease").onclick = () => { S.screenHold = false; S.screenApprover = $$("#scrApprover").value.trim(); S.screenApprovedOn = $$("#scrDate").value; store.save(); ledger.append("screen.hold.released", { approver: S.screenApprover, approvedOn: S.screenApprovedOn }); setMiniHint(); renderSettings(); };
+  }
+  if (page.querySelector("#scrHold")) $$("#scrHold").onclick = () => { S.screenHold = true; watcher.stop("put back on hold"); store.save(); ledger.append("screen.hold.on", {}); setMiniHint(); renderSettings(); };
   $$("#sClosed").onchange = (e) => { setClosedMode(e.target.checked, "turned off in Settings"); renderSettings(); };
   $$("#sAwake").onchange = (e) => { S.awakeMinutes = +e.target.value; store.save(); };
   if (page.querySelector("#sKeySave")) {
@@ -1109,7 +1125,7 @@ function preflight(text, route) {
 
 function answerLocally(text, route) {
   const guide = findGuide(text);
-  if (guide) { audit.record("guide.shown", { id: guide.id }); const r = addLocalMessages(text, guideMarkdown(guide), { speak: false }); if (D.settings.voiceOn) speaker.speak(`Here are the steps to ${guide.title.toLowerCase()}. I'll go through them with you.`, { mode: "full" }); if (viewMode === "mini") expandHelper(); return r; }
+  if (guide) { audit.record("guide.shown", { id: guide.id }); const r = addLocalMessages(text, guideMarkdown(guide, { screen: !screenOnHold() && watcher.supported }), { speak: false }); if (D.settings.voiceOn) speaker.speak(`Here are the steps to ${guide.title.toLowerCase()}. I'll go through them with you.`, { mode: "full" }); if (viewMode === "mini") expandHelper(); return r; }
   if (/^(run (the )?(morning|daily) check|verify yourself|self[- ]check|morning check)\b/i.test(text)) { addLocalMessages(text, "Running the morning check now. It uses no Claude tokens.", { speak: false }); return runMorningCheck("manual", { post: true }); }
   const caps = matchCapabilities(text, assessCapabilities(capEnv()));
   if (caps.length) return addLocalMessages(text, `:::understood\nYou're asking whether I can ${caps.map((c) => c.name.toLowerCase()).join(" and ")}. I answered from my own status list, so this used 0 tokens.\n:::\n\n${caps.map(explain).join("\n\n")}`);
@@ -1203,7 +1219,7 @@ function voiceEnv() {
 function capEnv() {
   return {
     engineKind: engine.kind, serverRunning: !!engine.token, serviceApproved: serviceApproved(), webResearch: permissions.check("web_research", "read"),
-    speech: voiceEnv(), systemVolume: engine.cap?.systemVolume || {}, floatSupported: canFloat(), topLevel: window.top === window, closedMode: closedMode(), systemVolumePermitted: permissions.check("system_volume", "write"), ferpaAttested: D.settings.ferpaAttested,
+    speech: voiceEnv(), systemVolume: engine.cap?.systemVolume || {}, floatSupported: canFloat(), topLevel: window.top === window, closedMode: closedMode(), screenHold: screenOnHold(), systemVolumePermitted: permissions.check("system_volume", "write"), ferpaAttested: D.settings.ferpaAttested,
   };
 }
 const capability = (id) => assessCapabilities(capEnv()).find((c) => c.id === id);
@@ -1223,11 +1239,20 @@ let followUpUntil = 0;
 let pushToTalk = false;
 function heard(t) {
   noteActivity();
-  const needsWake = D.settings.wakeWord && D.settings.autoListen && !pushToTalk;
+  const pressed = pushToTalk;
+  const needsWake = D.settings.wakeWord && D.settings.autoListen && !pressed;
   const w = parseWake(t, { followUp: !needsWake || Date.now() < followUpUntil });
+  // After a microphone press, "Hey Otter" (or just "hey") at the start is optional.
+  if (pressed && w.addressed) w.text = w.text.replace(/^\s*(?:hey|hi|ok|okay)\b[,.!\s]*/i, "").trim();
   pushToTalk = false;
+  if (pressed && !w.text) {
+    $("otterCaption").textContent = "Yes?";
+    const again = () => { pushToTalk = true; if (!listener.active) listener.start(); };
+    if (D.settings.voiceOn) speaker.speak("Yes?", { mode: "full" }).then(again); else again();
+    return;
+  }
   if (!w.addressed) {
-    $("otterCaption").textContent = "Not for me? Say \u201cOtter\u201d first.";
+    $("otterCaption").textContent = "Not for me? Say \u201cHey Otter\u201d first.";
     setTimeout(() => conversationLive && !busy && !speaker.speaking && !listener.active && listener.start(), 250);
     return;
   }
@@ -1323,9 +1348,11 @@ async function handleCommand(cmd, text) {
   }
   if (cmd.kind === "confirm") return answerLearning(cmd.yes, text);
   if (cmd.kind === "shutdown") return shutOff("you said so");
+  if (cmd.kind === "spotted") return showSpotted(spotterItems(), text);
   if (cmd.kind === "done") { collapseHelper(); return addLocalMessages(text, "Okay. I'll stay small until you need me.", { speak: true }); }
   if (cmd.kind === "screen") {
     if (!cmd.on) { watcher.stop("you asked me to stop looking"); return addLocalMessages(text, "Stopped looking. Nothing on your screen is captured now.", { speak: true }); }
+    if (screenOnHold()) return addLocalMessages(text, explain(capability("screen")), { speak: false });
     if (watcher.active) return addLocalMessages(text, "I'm already looking. Ask me what to do next, or where something is.", { speak: true });
     return addLocalMessages(text, "Tap the eye button and pick the screen or window to share. Chrome needs that click; I can't start sharing by voice.", { speak: true });
   }
@@ -1456,7 +1483,7 @@ function setViewMode(m) {
   viewMode = m;
   D.settings.viewMode = m;
   store.save();
-  if (m === "mini") toggleMiniChat(false);
+  if (m === "mini") { if (currentView !== "chat") showView("chat"); toggleMiniChat(false); }
   applyPrefs();
   // In the helper's own Chrome window, resize the window too (ignored in ordinary tabs).
   try { if (!pipWindow) m === "mini" ? window.resizeTo(340, 460) : window.resizeTo(Math.min(1280, screen.availWidth), Math.min(900, screen.availHeight)); } catch {}
@@ -1476,6 +1503,7 @@ function setMiniHint() {
   $("miniMic").classList.toggle("on", conversationLive);
   $("miniMic").setAttribute("aria-pressed", String(conversationLive));
   $("miniFloat").hidden = !canFloat() || !!pipWindow;
+  $("miniLook").hidden = screenOnHold() || !watcher.supported;
 }
 
 // Floating: Chrome's Document Picture-in-Picture keeps a small window on top of every other
@@ -1584,8 +1612,10 @@ const watcher = new ScreenWatcher({
   },
   onSnapshot: (snap) => ledger.append("screen.snapshot", { kept: "memory only", width: snap.width, height: snap.height, changed: Math.round(snap.changed * 100) / 100 }),
 });
+const screenOnHold = () => D.settings.screenHold !== false;
 async function toggleLook() {
   if (watcher.active) { watcher.stop("you tapped the eye button"); return; }
+  if (screenOnHold()) return showLocalReply(explain(capability("screen")), { speak: false });
   if (!watcher.supported) return showLocalReply(":::limitation\n**Look at your screen**\n- **Why I can't:** this browser or page doesn't allow screen sharing (claude.ai pages and some managed browsers block it).\n- **The missing piece:** O.T.T.E.R. opened from its own file or web address in Chrome or Edge, with screen sharing allowed by your browser's policy.\n- **With that piece, I could:** see the step you're on and circle what you're looking for.\n:::", { speak: false });
   try { await watcher.start(); }
   catch (e) { toast(/Permission|NotAllowed/i.test(e.name + e.message) ? "Screen sharing was cancelled or isn't allowed on this computer." : "Couldn't start screen sharing: " + e.message, 5000); }
@@ -1681,6 +1711,7 @@ function setClosedMode(on, why) {
 
 // Start: browsers need one click before a page may float, listen or speak.
 function startOtter() {
+  setTimeout(() => runSpotter("start"), 1500);
   ledger.append("session.start", { engine: engine.kind, closedMode: closedMode(), page: location.protocol === "file:" ? "local file" : location.host });
   if (canFloat() && !pipWindow) floatWindow();
   if (D.settings.autoListen && canListen()) startConversation();
@@ -1730,6 +1761,52 @@ function renderLedgerCard(box) {
   else try { box.querySelector("#lgDl").href = URL.createObjectURL(new Blob([ledger.export()], { type: "application/json" })); } catch {}
 }
 
+// ---------- microphone press and the spotter ----------
+// Pressing the microphone is always a way to ask, even in closed mode: it listens for one
+// request only. Chrome sends that audio to its speech service, so each press is logged.
+function micPressed() {
+  if (listener.active) { stopConversation(); setMiniHint(); return; }
+  if (isOff) return;
+  if (canListen()) { pushToTalk = true; startConversation(); return; }
+  if (!listener.supported || (window.top !== window && !engine.token)) return showLocalReply(explain(capability("listen")), { speak: false });
+  if (!D.settings.pttNoticeShown) {
+    D.settings.pttNoticeShown = true; store.save();
+    toast(`Listening for one request. Chrome sends this audio to ${recognitionVendor()} to turn it into text; it's noted in your log.`, 6000);
+  }
+  ledger.append("closed_mode.exception", { use: "microphone button, one request", audioTo: recognitionVendor() });
+  speaker.stop();
+  pushToTalk = true;
+  listener.start();
+  noteActivity();
+}
+
+// Looks over what Dr. Prevot has already given O.T.T.E.R. and flags what he may have missed.
+let pendingSpotted = [];
+function spotterItems() {
+  const sources = Object.values(D.sources).slice(-20);
+  return spot({ sources, tasks: D.tasks, proposals: gate.list(), me: D.settings.myNames, now: new Date() });
+}
+function runSpotter(trigger) {
+  if (isOff) return;
+  const seen = new Set(D.spottedSeen || []);
+  const fresh = spotterItems().filter((x) => !seen.has(x.key));
+  if (!fresh.length) return;
+  D.spottedSeen = [...seen, ...fresh.map((x) => x.key)].slice(-500);
+  store.save();
+  ledger.append("spotter.found", { count: fresh.length, trigger, tokens: 0 });
+  pendingSpotted = fresh;
+  $("otter").classList.add("has-spot");
+  $("otterCaption").textContent = fresh.length === 1 ? "I spotted something you may have missed. Tap me." : `I spotted ${fresh.length} things you may have missed. Tap me.`;
+}
+function showSpotted(items = pendingSpotted, userText = null) {
+  pendingSpotted = [];
+  $("otter").classList.remove("has-spot");
+  addLocalMessages(userText, spottedMarkdown(items), { speak: false });
+  if (D.settings.voiceOn) speaker.speak(items.length ? `Here's what I spotted. ${items[0].title}.` : "Nothing new stands out.", { mode: "full" });
+  if (viewMode === "mini") expandHelper();
+}
+setInterval(() => runSpotter("every 30 minutes"), 30 * 60000);
+
 // ---------- prefs & wiring ----------
 function applyPrefs() {
   const S = D.settings;
@@ -1766,7 +1843,7 @@ function wire() {
   $("miniFloat").onclick = () => floatWindow();
   $("miniLook").onclick = () => toggleLook();
   $("miniOff").onclick = () => shutOff("you pressed the power button");
-  $("miniMic").onclick = () => { if (conversationLive) { stopConversation(); setMiniHint(); } else { pushToTalk = true; startConversation(); } };
+  $("miniMic").onclick = () => micPressed();
   $("newChat").onclick = newConversation;
   $("searchChats").oninput = () => { historyLimit = PAGE; renderHistory(); };
   $("groupBy").onchange = renderHistory;
@@ -1778,6 +1855,7 @@ function wire() {
   let trickN = 0;
   $("otterBtn").onclick = () => {
     if (busy) return;
+    if (pendingSpotted.length) return showSpotted();
     const waiting = gate.list().find((p) => p.status === "pending");
     if (waiting && otter.state === "awaiting_approval") return openApproval(waiting.id);
     const el = $("otter");
@@ -1804,7 +1882,7 @@ function wire() {
   $("vpVol").onchange = () => { if (D.settings.voiceOn) speaker.speak(`This is my speaking volume, ${Math.round(D.settings.voiceVolume * 100)} percent.`, { mode: "full" }); };
   $("vpConv").onchange = (e) => { D.settings.conversationMode = e.target.checked; if (!e.target.checked) stopConversation(); store.save(); };
   $("vpTest").onclick = () => { const c = speaker.supported ? speaker.choice() : null; if (!c?.voice && speaker.supported) toast("No male voice is available, so the browser's default voice will be used."); speaker.speak(`Hello, I'm Otter. This is how I sound at ${Math.round(D.settings.voiceVolume * 100)} percent.`, { mode: "full" }); };
-  $("micBtn").onclick = () => { if (listener.active) { stopConversation(); return; } pushToTalk = true; startConversation(); };
+  $("micBtn").onclick = () => micPressed();
 
   $("stopBtn").onclick = () => busy?.abort();
   const input = $("input");

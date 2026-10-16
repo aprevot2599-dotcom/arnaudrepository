@@ -35,6 +35,8 @@ export const DEFAULT_SETTINGS = {
   autoListen: true,
   wakeWord: true,
   openDefaultsApplied: false,
+  closedMode: true,
+  screenHold: true,
 };
 
 function blank() {

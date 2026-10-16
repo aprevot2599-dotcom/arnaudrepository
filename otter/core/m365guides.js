@@ -160,7 +160,7 @@ export function findGuide(text) {
   return GUIDES.find((g) => g.match.test(t)) || null;
 }
 
-export function guideMarkdown(g) {
+export function guideMarkdown(g, { screen = false } = {}) {
   return [
     `:::understood\nYou want the steps to ${g.title.charAt(0).toLowerCase() + g.title.slice(1)} in ${g.app}. Here's the checklist, from my built-in guides (0 tokens).\n:::`,
     `### ${g.title}`,
@@ -168,6 +168,8 @@ export function guideMarkdown(g) {
     "**Steps**\n" + g.steps.map((s) => `- [ ] ${s}`).join("\n"),
     g.example ? `**Example:** \`${g.example}\`` : "",
     g.gotchas.length ? "**Watch out**\n" + g.gotchas.map((x) => `- ${x}`).join("\n") : "",
-    `:::better\nYou can make this experience better if you tap the eye button and ask “Hey Otter, where's the next step?” while you're on that screen. I'll circle it on a snapshot. That sends one picture of your screen to Claude, so only do it when nothing sensitive is showing.\n:::`,
+    screen
+      ? `:::better\nYou can make this experience better if you tap the eye button and ask “Hey Otter, where's the next step?” while you're on that screen. I'll circle it on a snapshot. That sends one picture of your screen to Claude, so only do it when nothing sensitive is showing.\n:::`
+      : `:::better\nYou can make this experience better if you tell me which step you're on and what you see; I'll take it from there. (Screen coaching is on hold until BMCC approves it.)\n:::`,
   ].filter(Boolean).join("\n\n");
 }

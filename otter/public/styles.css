@@ -505,7 +505,7 @@ body.mini .topbar > :not(.top-actions), body.mini .top-actions > :not(#needsYou)
 body.mini .top-actions, body.mini #needsYou { pointer-events: auto; }
 body.mini .main { position: relative; }
 body.mini .view:not(#view-chat) { display: none !important; }
-body.mini #view-chat { display: flex; }
+body.mini #view-chat { display: flex; flex-direction: column; }
 body.mini .messages, body.mini .composer { display: none; }
 body.mini .stage { flex: 1; justify-content: center; padding: 46px 12px 14px; gap: 10px; }
 body.mini .stage .otter, body.mini .stage.compact .otter { width: min(62vw, 46vh, 230px); height: min(62vw, 46vh, 230px); }
@@ -527,7 +527,7 @@ body.mini.mini-chat .stage .otter { width: 52px; height: 52px; }
 body.mini.mini-chat .stage .bubble-say { text-align: left; padding: 4px 10px; box-shadow: none; }
 body.mini.mini-chat .stage .bubble-say::before { left: -7px; top: 50%; transform: translateY(-50%) rotate(-45deg); }
 body.mini.mini-chat .mini-hint { display: none; }
-body.mini.mini-chat .mini-bar { gap: 4px; }
+body.mini.mini-chat .mini-bar { gap: 4px; flex-basis: 100%; justify-content: center; } /* own row, so a caption change never moves a button mid-click */
 body.mini.mini-chat .mini-btn { width: 34px; height: 34px; box-shadow: none; }
 body.mini.mini-chat .mini-btn svg { width: 17px; height: 17px; }
 body.mini.mini-chat .messages { padding: 8px; font-size: 14px; }
@@ -540,6 +540,7 @@ body.mini.mini-chat .pill-btn span { display: none; }
 
 /* ---------- screen coaching, checklists, start and off screens ---------- */
 .mini-btn.off { color: var(--bad); }
+.otter.has-spot .p-bulb { opacity: 1; animation: pop .6s ease-out both; }
 .mini-btn.off:hover { background: var(--bad-soft); color: var(--bad); }
 #miniLook.on { background: var(--river-soft); color: var(--river); border-color: var(--river); animation: none; }
 ul.tasks, ol.tasks { list-style: none; padding-left: 0; }

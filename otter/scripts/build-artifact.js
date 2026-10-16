@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const MODULES = ["core/security.js", "core/privacy.js", "core/analysis.js", "core/orchestrator.js", "core/capabilities.js", "core/advisor.js", "core/voicecmd.js", "core/m365guides.js", "core/router.js", "core/verify.js", "core/learn.js", "core/ledger.js", "core/agent.js", "public/markdown.js", "public/otter.js", "public/voice.js", "public/screen.js", "public/store.js", "public/app.js"];
+const MODULES = ["core/security.js", "core/privacy.js", "core/analysis.js", "core/orchestrator.js", "core/capabilities.js", "core/advisor.js", "core/voicecmd.js", "core/m365guides.js", "core/router.js", "core/verify.js", "core/learn.js", "core/ledger.js", "core/spotter.js", "core/agent.js", "public/markdown.js", "public/otter.js", "public/voice.js", "public/screen.js", "public/store.js", "public/app.js"];
 
 const read = (p) => fs.readFileSync(path.join(ROOT, p), "utf8");
 let js = "";

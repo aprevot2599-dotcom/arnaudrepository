@@ -313,6 +313,18 @@ export class ApprovalGate {
   }
 }
 
+// ---------- advisor, not actor ----------
+// O.T.T.E.R. may carry out only its own local bookkeeping (knowledge, tasks) and, on the local
+// server, this computer's volume. Anything that would act on BMCC systems, cloud accounts or
+// the browser has no executor at all, so even an approved proposal comes back to Dr. Prevot
+// as text for him to act on. This check refuses to start if that ever changes.
+export const ACTOR_KINDS = ["institutional", "personal_cloud", "browser"];
+export function assertAdvisorOnly(executors) {
+  const bad = Object.keys(executors).filter((t) => ACTOR_KINDS.includes(SYSTEMS[ACTION_TYPES[t]?.system]?.kind) || ACTION_TYPES[t]?.system === "claude_ai");
+  if (bad.length) throw new SecurityError("not_advisor", `O.T.T.E.R. is an advisor; these would let it act on outside systems: ${bad.join(", ")}`);
+  return true;
+}
+
 // ---------- skills ----------
 export function skillStatus(skill, { permissions, settings = {} }) {
   const disabled = (settings.disabledSkills || []).includes(skill.name);

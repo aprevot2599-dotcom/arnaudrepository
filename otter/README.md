@@ -81,7 +81,7 @@ Reports are kept for 30 days in `data/local/verification/` (git-ignored).
 Every open decision, with my recommendation and the current default: [DECISIONS.md](DECISIONS.md).
 
 ## No install, closed system (start here if you can't install anything)
-One file, `otter-web.html`, opened in Chrome. It floats as a small otter, coaches you through Power Automate, Forms and Excel from screen snapshots it takes only while the eye is on, circles what you're looking for on the snapshot, gives checklists, talks only to api.anthropic.com, and keeps a log you can verify. Full steps, what "closed" means, how to check it, and what to clear with BMCC first: **[NO-INSTALL.md](NO-INSTALL.md)**.
+One file, `otter-web.html`, opened in Chrome. It floats as a small otter, acts as an advisor (never an actor) on what you give it, spots deadlines, open questions and mismatched numbers you may have missed, coaches you through Power Automate, Forms and Excel with checklists, answers "Hey Otter" or a microphone press, talks only to api.anthropic.com, and keeps a log you can verify. Full steps, what "closed" means, how to check it, and what to clear with BMCC first: **[NO-INSTALL.md](NO-INSTALL.md)**.
 
 ## The helper window (local server version)
 O.T.T.E.R. opens as a small window showing just the otter, listening, with everything switched on.
@@ -98,6 +98,8 @@ O.T.T.E.R. opens as a small window showing just the otter, listening, with every
 - **On by default at first launch:** Claude answers, voice at 20%, online natural voices, always-on listening with the "Otter" wake word, computer volume control (20% at start, your OK on each change), and web research on the local server. **Still off on purpose:** student-record processing (FERPA), and sending, posting or changing anything without your OK. Turn anything off under Menu > Settings.
 
 The claude.ai link shows the same otter-only start, but there it can't hear you or float, because claude.ai pages aren't allowed to use the microphone or open floating windows. It explains that if you ask.
+
+Screen coaching (snapshots while the eye is on, circles on the snapshot) is built but **on hold** until BMCC gives full permission; see NO-INSTALL.md.
 
 ## The screen
 The default **Simple** layout puts the otter in the middle with six starting points (Just talk, What's on my plate?, Make sense of an email, Check some numbers, Help me decide, What can you do?) and three buttons under the message box: **Talk**, **Add email or doc**, **Send**. A brown "needs your OK" button appears at the top whenever something is waiting for approval. Tap the otter when it says "tap to review" to open what's waiting; tap it any other time and it does a trick. History, projects, skills, tasks, research, abilities and settings live under the **menu** (top left); your dashboard is **My day**. Each answer's token count is one line under it, with **details** for the skill plan. Prefer the old three-pane view? Settings > Personal > Layout > Full.

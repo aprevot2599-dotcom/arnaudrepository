@@ -13,10 +13,22 @@ One file, `otter-web.html`, opened in Chrome or Edge. No Node.js, no server, no 
 5. **The otter floats.** A small always-on-top window opens with just the otter. Chrome decides where it first appears; it's usually the bottom-right corner. If not, drag it there. The original tab says O.T.T.E.R. is floating and has a button to bring it back.
 6. **Use it:**
    - Type or tap the chat bubble to ask something.
-   - Tap the **eye** to let it look at your screen. Chrome asks which screen, window or tab to share and shows "sharing" the whole time. Then ask "where is…?" or "what's next?" It circles the spot on a snapshot and gives a checklist.
+   - Say "Hey Otter…" (if you allowed listening) or press the **microphone** and just say what you need. "Hey" is optional after a press.
+   - Ask "what did you spot?" or tap the otter when its lightbulb is on. It lists deadlines, unanswered questions, commitments and numbers that don't agree in what you've given it (0 tokens).
+   - The **eye** (screen coaching) is hidden and **on hold** until BMCC gives full permission. See "Screen coaching is on hold" below.
    - Ask "how do I send Forms responses to Excel in Power Automate?" (or about approvals, schedules, failed flows, branching forms, XLOOKUP, PivotTables, drop-downs, totals that don't add up, highlighting). Built-in guides answer for 0 tokens.
    - The window grows to show answers, checklists and questions, and shrinks back when you tick the last step or say "done".
 7. **Turn it off:** the red power button, "Hey Otter, shut down", or just close the window. Everything stops: microphone, screen capture, voice, timers. Closing the browser tab ends it completely.
+
+## An advisor, not an actor
+
+O.T.T.E.R. only sees what you give it (pasted emails, documents, your tasks) and makes recommendations on top of it. It never logs into, reads from, or changes anything on BMCC systems. This is enforced in the code, not just promised: at startup a check (`assertAdvisorOnly`) refuses to run if any action O.T.T.E.R. can carry out would touch an outside system. The only things it can do are on its own side: remember a note, add a task, change the volume, and each needs your OK.
+
+The **spotter** is the advisor part: it looks over what you've already given it, every 30 minutes, after each answer and after you add an email, and flags what you may not have spotted yet, each with the quote it came from. It runs on your computer for 0 tokens and acts on none of it.
+
+## Screen coaching is on hold
+
+Until BMCC gives full permission, O.T.T.E.R. doesn't look at your screen at all: the eye button is hidden, nothing is captured, and no picture is sent. Asking it to look gets an explanation instead. When BMCC approves, go to Menu > Settings > Screen coaching, enter who approved and the date, tick the box and press **Release the hold**. The log records that release with the approver's name. **Put back on hold** reverses it, also logged.
 
 ## What "closed" means here, and how to check it
 
@@ -27,13 +39,18 @@ One file, `otter-web.html`, opened in Chrome or Edge. No Node.js, no server, no 
 - **The log** (Menu > Abilities & growth > Verifiable log) records each session start and stop, microphone on/off, screen sharing on/off, each snapshot taken and each one sent, every request (size, fingerprint, tokens) and every approval. It never records what you said or what was on screen. Each entry's fingerprint covers the previous one, so editing or deleting any entry breaks the chain. **Verify the log** checks it in the app. To check it independently, **Download log**, then on any computer with Node.js run `node scripts/verify-log.mjs otter-ledger.json`. It reports VERIFIED or BROKEN and lists every outside address ever contacted.
 - **You can watch it yourself:** press F12 > Network in Chrome while using O.T.T.E.R. Every request shown should go to api.anthropic.com.
 
-## The one exception: "Hey Otter"
+## The one exception: your voice
 
-Chrome turns speech into text by sending microphone audio to Google's servers, outside O.T.T.E.R.'s control and outside the Content Security Policy. So in closed mode, O.T.T.E.R. doesn't listen; you type, tap and click. If you tick "Listen for Hey Otter", it listens and acts only on speech that begins with "Hey Otter", and the log records that you turned the exception on. Speaking answers out loud uses only voices installed on your computer while closed mode is on.
+Chrome turns speech into text by sending microphone audio to Google's servers, outside O.T.T.E.R.'s control and outside the Content Security Policy. So in closed mode, O.T.T.E.R. doesn't listen on its own. Two ways to talk to it anyway:
+
+- **Press the microphone** any time. It listens for that one request, then stops. Each press is written to the log as a closed-mode exception, naming where the audio went.
+- **"Hey Otter"**: tick "Listen for Hey Otter" and it listens continuously, acting only on speech that begins with "Hey Otter". The log records that you turned the exception on.
+
+Speaking answers out loud uses only voices installed on your computer while closed mode is on.
 
 ## Before you use it on BMCC work
 
-- **Screen pictures are content.** A snapshot of Outlook, Excel, Forms or Power Automate sent to Claude is BMCC Microsoft 365 content going to Claude, which is exactly what BMCC hasn't approved yet. O.T.T.E.R. sends a picture only when you ask a question while the eye is on, and logs each one, but it can't tell what's on the picture before it goes. Use the eye on practice files, your own test flows, or non-BMCC accounts until IT approves.
+- **Screen pictures are content.** A snapshot of Outlook, Excel, Forms or Power Automate sent to Claude is BMCC Microsoft 365 content going to Claude, which is exactly what BMCC hasn't approved yet. That's why screen coaching ships on hold. After release, O.T.T.E.R. sends a picture only when you ask a question while the eye is on, and logs each one, but it can't tell what's on the picture before it goes.
 - **Student records.** If a FERPA-protected screen is visible, don't ask while looking. The privacy guard can scan text, but it cannot scan pictures.
 - **A BMCC computer.** Opening an HTML file isn't installing software, but it is still an AI tool sending data from a BMCC machine. Ask IT before using it there. Their browser policy may also block screen sharing, the microphone, or floating windows; O.T.T.E.R. will say so if it does.
 

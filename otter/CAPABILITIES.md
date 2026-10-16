@@ -36,7 +36,10 @@ Checked on 2026-10-14 (voice and volume added the same day) in the build environ
 | Floating on top | Chrome/Edge Document Picture-in-Picture from the helper (local server). Not on claude.ai. |
 | Learning | Seeded from your brief; offers to remember stated preferences and keeps them only on yes; viewable and forgettable. |
 | No-install closed file | `otter-web.html`: opened in Chrome, talks only to api.anthropic.com (Content Security Policy plus code gate), API key in browser storage only. Tested opened from disk. |
-| Screen coaching | Snapshots while the eye is on (Chrome's picker and sharing bar), memory only, sent only with a question, circles drawn on the snapshot, checklists. |
+| Advisor, not actor | Startup check refuses any executor that could act on an outside system; it only recommends. |
+| Spotter | Deadlines within 7 days or just passed, unanswered questions, commitments, mismatched numbers, stale approvals and old tasks, from what you've given it, with quotes, 0 tokens. "What did you spot?" or tap the otter. |
+| Ask any time | "Hey Otter" (when listening is allowed) or a microphone press for one request; each press logged as a closed-mode exception. |
+| Screen coaching | Built, **on hold** until BMCC permission (eye hidden, nothing captured). After a logged release: snapshots while the eye is on, memory only, sent only with a question, circles drawn on the snapshot. |
 | Microsoft 365 guides | 11 built-in Power Automate, Forms and Excel checklists, 0 tokens. |
 | Verifiable log | Hash-chained, no content, verifiable in the app and with an independent script; edits are detected. |
 | Off switch | Power button, "Hey Otter, shut down", or closing the window stops microphone, screen capture, voice and timers. |

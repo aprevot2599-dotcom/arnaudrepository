@@ -64,3 +64,11 @@ Everything O.T.T.E.R. needs from you, in the order I'd make the calls. Each row 
 | 29 | "Hey Otter" listening | Closed (type and click only) / allow Chrome speech (audio to Google) | Closed for BMCC work; allow speech on your personal computer if you like | Closed |
 | 30 | Local speech engine so "Hey Otter" works while closed | Build it (40-75 MB, CPU use, a few hours of work) / not now | Build it after a week of using the closed version, if voice turns out to matter | Not built |
 | 31 | API spending limit | Set one at console.anthropic.com > Limits | Set a monthly limit you're comfortable with before first use | No limit set by O.T.T.E.R. |
+
+## 7. Advisor stance and screen hold
+
+| # | Decision | Options | My recommendation | Until you decide |
+|---|---|---|---|---|
+| 32 | Release screen coaching | Release after BMCC's written OK / keep on hold | Keep on hold until IT answers 28 in writing; record who approved and when in Settings | On hold, eye hidden |
+| 33 | How often the spotter looks | Every 30 minutes plus after answers and new emails (current) / only when asked | Keep it; it costs 0 tokens and never acts | Every 30 minutes |
+| 34 | Microphone press in closed mode | Allowed and logged (current) / disabled | Allowed and logged; it's the only voice route that doesn't listen all the time | Allowed, logged |

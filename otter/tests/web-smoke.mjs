@@ -93,7 +93,50 @@ try {
   check(calls.length > 0 && !JSON.stringify(calls[0].body).includes('"type":"image"'), "no screen picture is sent when O.T.T.E.R. isn't looking");
   check(calls[0].headers["anthropic-dangerous-direct-browser-access"] === "true" && calls[0].headers["x-api-key"] === "sk-ant-test-key", "request goes straight to Anthropic with your key");
 
+  // screen coaching is on hold until BMCC approves
+  check(await page.locator("#miniLook").isHidden(), "the eye button is hidden while screen coaching is on hold");
+  await page.fill("#input", "look at my screen");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(".callout-limitation");
+  check(await page.locator(".callout-limitation").last().textContent().then((t) => /until BMCC gives full permission/.test(t)), "asking it to look explains the hold and how to release it");
+
+  // the spotter: an email with a deadline tomorrow and an unanswered question
+  const tmr = new Date(Date.now() + 86400000).toLocaleDateString("en-US", { month: "long", day: "numeric" });
+  await page.click("#addSourceBtn");
+  await page.fill("#srcTitle", "Cohort start");
+  await page.fill("#srcText", `From: Dana Ruiz <dana@example.org>\nSubject: Cohort\n\nCan you confirm the cohort start by ${tmr}? Will the lab be ready?\n\nFrom: Arnaud Prevot\n\nI will send the budget soon.`);
+  await page.check("#srcAttest");
+  await page.click("#srcAdd");
+  await page.waitForFunction(() => /spotted/.test(document.getElementById("otterCaption").textContent), null, { timeout: 5000 });
+  check(true, "the otter says it spotted something you may have missed");
+  await page.click("#otterBtn");
+  await page.waitForSelector(".callout-spotted");
+  const spotted = await page.locator(".callout-spotted").last().textContent();
+  check(/tomorrow/.test(spotted) && /may still need your answer/.test(spotted), "tapping it lists the deadline tomorrow and the unanswered question, with quotes");
+
+  // pressing the microphone works even in closed mode, and is logged
+  await page.click("#miniMic");
+  await page.waitForTimeout(400);
+  const exc = await page.evaluate(() => JSON.parse(localStorage.getItem("otter.v1")).ledger.some((e) => e.type === "closed_mode.exception"));
+  check(exc, "a microphone press listens for one request and records that the audio goes to the speech service");
+  await page.evaluate(() => document.getElementById("miniMic").classList.contains("on") && document.getElementById("miniMic").click());
+
+  // release the hold with an approver, as if BMCC said yes
+  await page.click("#miniMax");
+  await page.click("#openSide"); await page.click('[data-view="settings"]');
+  await page.fill("#scrApprover", "BMCC IT (test)");
+  await page.fill("#scrDate", "2026-10-17");
+  await page.check("#scrOk");
+  await page.click("#scrRelease");
+  await page.waitForTimeout(600);
+  const rel = await page.evaluate(() => JSON.parse(localStorage.getItem("otter.v1")).ledger.some((e) => e.type === "screen.hold.released" && e.detail.approver === "BMCC IT (test)"));
+  check(rel, "releasing the hold records who approved it in the log");
+  await page.click("#minBtn");
+  check(await page.locator("#miniLook").isVisible(), "after release, the eye button appears");
+  await page.click("#miniChat");
+
   // look, then ask where something is
+  check(await page.locator("#miniLook").boundingBox().then((b) => b && b.x >= 0 && b.x + b.width <= 420), "all helper buttons stay inside the small window");
   await page.click("#miniLook");
   await page.waitForFunction(() => document.getElementById("miniLook").classList.contains("on"));
   check(true, "eye button starts looking (after Chrome's own screen picker)");
