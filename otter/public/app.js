@@ -854,7 +854,8 @@ function renderSettings() {
       <p style="margin:0">To have O.T.T.E.R. open every time Chrome starts, add this address to Chrome's startup pages:</p>
       <div class="toolbar"><input id="startAddr" type="text" readonly class="mono" style="flex:1;min-width:0" value="${esc(location.href.split(/[?#]/)[0])}"><button type="button" class="btn" id="startAddrCopy">Copy</button></div>
       <ol class="hint" style="margin:0;padding-left:1.2em"><li>Chrome menu (⋮) > Settings > On startup.</li><li>Choose <b>Open a specific page or set of pages</b> > <b>Add a new page</b>, paste, <b>Add</b>.</li><li>Next time Chrome opens, click <b>Start Otter</b> once and it floats. Chrome requires that one click.</li></ol>
-      <p class="hint" style="margin:0">Edge: Settings > Start, home, and new tabs > Open these pages. If you move or rename the file, update the address.</p></div>` : ""}
+      <p class="hint" style="margin:0">Edge: Settings > Start, home, and new tabs > Open these pages. If you move or rename the file, update the address.</p>
+      ${location.protocol === "file:" ? `<p class="hint" style="margin:0"><b>Other computers:</b> this address points to a file on this computer only. Signing in to Chrome on another computer syncs bookmarks, not pinned tabs or this file, so each computer needs its own copy (and its own API key, which never syncs).</p>` : ""}</div>` : ""}
     <div class="card"><h3>Permissions</h3><p class="hint" style="margin:0">Each system is separate: Outlook access says nothing about SharePoint or Banner, and read never implies write. A signed-in browser does not count. Protected systems need a stated purpose. Note that no integration for these systems exists yet, so a grant today only lets plans and approvals reference them.</p><div id="permList"></div></div>
     <div class="grid-2">
       <div class="card"><h3>Personal</h3>
