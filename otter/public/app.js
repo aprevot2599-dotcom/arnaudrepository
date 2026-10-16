@@ -1725,7 +1725,9 @@ function renderLedgerCard(box) {
     ledger.append("ledger.verified", { ok: r.ok, count: r.count });
   };
   box.querySelector("#lgCopy").onclick = () => copyText(ledger.export());
-  try { box.querySelector("#lgDl").href = URL.createObjectURL(new Blob([ledger.export()], { type: "application/json" })); } catch {}
+  // Pages inside claude.ai can't hand out files; there, Copy is the way to export.
+  if (window.top !== window) box.querySelector("#lgDl").remove();
+  else try { box.querySelector("#lgDl").href = URL.createObjectURL(new Blob([ledger.export()], { type: "application/json" })); } catch {}
 }
 
 // ---------- prefs & wiring ----------
