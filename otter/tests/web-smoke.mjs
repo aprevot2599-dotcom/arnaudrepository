@@ -124,6 +124,7 @@ try {
   // release the hold with an approver, as if BMCC said yes
   await page.click("#miniMax");
   await page.click("#openSide"); await page.click('[data-view="settings"]');
+  check(await page.locator("#startAddr").inputValue().then((v) => v.startsWith("file://") && v.endsWith("otter-web.html")), "Settings shows the exact address to add to Chrome's startup pages");
   await page.fill("#scrApprover", "BMCC IT (test)");
   await page.fill("#scrDate", "2026-10-17");
   await page.check("#scrOk");

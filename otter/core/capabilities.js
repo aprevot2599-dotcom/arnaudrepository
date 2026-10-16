@@ -53,6 +53,10 @@ export function assessCapabilities(env = {}) {
   add(env.floatSupported
     ? { id: "float", name: "Float on top of other windows", status: "ready", can: "Chrome's always-on-top mini window." }
     : { id: "float", name: "Float on top of other windows", status: env.engineKind === "artifact" ? "blocked" : "missing", why: env.engineKind === "artifact" ? "Pages inside claude.ai can't open Chrome's always-on-top window." : "This browser doesn't support always-on-top windows for web pages.", missing: "The O.T.T.E.R. helper (npm run helper) in Google Chrome 116 or newer, or Microsoft Edge.", unlocks: "stay on top of your other windows as a small otter you can talk to." });
+  // A page can't open itself or change Chrome's settings; Chrome's own "On startup" setting can.
+  add(env.engineKind === "artifact"
+    ? { id: "autostart", name: "Open when Chrome starts", status: "blocked", why: "This copy lives inside claude.ai, and Chrome can't float it from there.", missing: "The otter-web.html file saved on your computer.", unlocks: "open with Chrome every time, one click from floating." }
+    : { id: "autostart", name: "Open when Chrome starts", status: "needs_you", can: "Open in a tab every time Chrome starts, once you add my address to Chrome's startup pages. Then one click on Start Otter floats me.", why: "A web page can't change Chrome's settings, and Chrome needs one click before it opens a floating window.", missing: "Chrome: Settings > On startup > Open a specific page or set of pages > Add a new page, then paste my address. Menu > Settings > Open with Chrome shows it with a Copy button. In Edge: Settings > Start, home, and new tabs > Open these pages.", unlocks: "be there every time Chrome starts, one click from floating in the corner." });
   add(env.screenHold !== false
     ? { id: "screen", name: "Look at your screen and coach you", status: "blocked", why: "On hold by your decision until BMCC gives full permission. A screen picture of Microsoft 365 apps sent to Claude is BMCC content leaving for an outside service.", missing: "BMCC's written approval, then Settings > Screen coaching > Release the hold (records who approved it in the log).", unlocks: "see the step you're on in Power Automate, Forms or Excel, circle what you're looking for, and give the next step." }
     : { id: "screen", name: "Look at your screen and coach you", status: env.topLevel || env.serverRunning ? "ready" : "blocked", can: "Snapshots while the eye is on; one is sent only with a question.", why: "claude.ai pages can't share the screen.", missing: "The otter-web.html file opened in Chrome.", unlocks: "screen coaching." });
@@ -76,6 +80,7 @@ const MATCHERS = [
   ["system_volume", /\b(computer|system|laptop|pc|mac) (volume|sound)|(volume|sound) (of|on) (the|my) (computer|laptop|pc|mac)\b/i],
   ["listen", /\b(hear me|listen|microphone|mic\b|talk to you|voice conversation|hands-?free)\b/i],
   ["screen", /\b(look at|see|watch) (?:my|the) screen|screen ?shot|where is (?:the )?\w+ (?:button|menu|tab)\b/i],
+  ["autostart", /\b(?:open|start|launch|load|come up|pop up)s?\b.{0,30}\b(?:when|whenever|as soon as|each time|every time)\b.{0,20}\b(?:chrome|edge|browser)\b|\b(?:open|start|launch|load)s?(?: up)? (?:with|alongside) (?:chrome|edge)\b|\b(?:on|at) (?:chrome )?start-?up\b|\bauto-?(?:start|open|launch)\b/i],
   ["float", /\b(float|on top|always on top|pop ?out|picture in picture)\b/i],
   ["speak", /\b(male voice|your voice|sound (more )?(human|natural)|speak|talk (back|to me|out loud))\b/i],
   ["web_research", /\b(search the web|google|look (it )?up online|internet|web research|latest (news|data))\b/i],
@@ -86,7 +91,8 @@ const MATCHERS = [
 ];
 
 export function matchCapabilities(text, list) {
-  const ids = MATCHERS.filter(([, re]) => re.test(text || "")).map(([id]) => id);
+  let ids = MATCHERS.filter(([, re]) => re.test(text || "")).map(([id]) => id);
+  if (ids.includes("autostart")) ids = ids.filter((id) => id !== "chrome_bridge"); // "when I open Chrome" isn't a form-filling question
   return list.filter((c) => ids.includes(c.id));
 }
 

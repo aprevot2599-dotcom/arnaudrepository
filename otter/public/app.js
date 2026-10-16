@@ -850,6 +850,11 @@ function renderSettings() {
       <label class="switch"><input id="scrOk" type="checkbox"><span>BMCC has approved, in writing, sending screen pictures of Microsoft 365 apps to Claude.</span></label>
       <div><button type="button" class="btn" id="scrRelease" disabled>Release the hold</button></div>` : `<p style="margin:0"><b>Released</b> on ${esc(S.screenApprovedOn || "")}, approved by ${esc(S.screenApprover || "")}. Recorded in the log.</p><div><button type="button" class="btn btn-bad" id="scrHold">Put back on hold</button></div>`}
     </div>
+    ${window.top === window && /^(file|https?):$/.test(location.protocol) ? `<div class="card"><h3>Open with Chrome</h3>
+      <p style="margin:0">To have O.T.T.E.R. open every time Chrome starts, add this address to Chrome's startup pages:</p>
+      <div class="toolbar"><input id="startAddr" type="text" readonly class="mono" style="flex:1;min-width:0" value="${esc(location.href.split(/[?#]/)[0])}"><button type="button" class="btn" id="startAddrCopy">Copy</button></div>
+      <ol class="hint" style="margin:0;padding-left:1.2em"><li>Chrome menu (⋮) > Settings > On startup.</li><li>Choose <b>Open a specific page or set of pages</b> > <b>Add a new page</b>, paste, <b>Add</b>.</li><li>Next time Chrome opens, click <b>Start Otter</b> once and it floats. Chrome requires that one click.</li></ol>
+      <p class="hint" style="margin:0">Edge: Settings > Start, home, and new tabs > Open these pages. If you move or rename the file, update the address.</p></div>` : ""}
     <div class="card"><h3>Permissions</h3><p class="hint" style="margin:0">Each system is separate: Outlook access says nothing about SharePoint or Banner, and read never implies write. A signed-in browser does not count. Protected systems need a stated purpose. Note that no integration for these systems exists yet, so a grant today only lets plans and approvals reference them.</p><div id="permList"></div></div>
     <div class="grid-2">
       <div class="card"><h3>Personal</h3>
@@ -872,6 +877,7 @@ function renderSettings() {
   const $$ = (s) => page.querySelector(s);
   if (svc) $$("#svcOk").onchange = (e) => (e.target.checked ? approveService() : revokeService(svc));
   $$("#rerunOnboard").onclick = () => runOnboarding();
+  if ($$("#startAddrCopy")) $$("#startAddrCopy").onclick = () => copyText($$("#startAddr").value);
   if (page.querySelector("#scrRelease")) {
     const ready = () => ($$("#scrRelease").disabled = !($$("#scrOk").checked && $$("#scrApprover").value.trim() && $$("#scrDate").value));
     ["#scrOk", "#scrApprover", "#scrDate"].forEach((sel) => ($$(sel).oninput = $$(sel).onchange = ready));

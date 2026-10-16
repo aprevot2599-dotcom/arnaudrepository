@@ -65,3 +65,17 @@ test("screen coaching is on hold until BMCC approves, and says so", () => {
   assert.match(guideMarkdown(GUIDES[0]), /on hold until BMCC approves/);
   assert.match(guideMarkdown(GUIDES[0], { screen: true }), /tap the eye button/);
 });
+
+test("asking to open with Chrome gets the startup steps for 0 tokens, not the form-filling answer", async () => {
+  const { chooseRoute } = await import("../core/router.js");
+  const caps = assessCapabilities({ engineKind: "direct" });
+  for (const q of ["can you make otter open when I open Chrome", "can you start up with chrome?", "could you auto-start?"]) {
+    assert.deepEqual(matchCapabilities(q, caps).map((c) => c.id), ["autostart"], q);
+    assert.equal(chooseRoute(q, { engineKind: "direct", capabilities: caps }).tier, "local", q);
+  }
+  const a = caps.find((c) => c.id === "autostart");
+  assert.match(a.missing, /On startup/);
+  assert.match(a.why, /one click/);
+  assert.equal(assessCapabilities({ engineKind: "artifact" }).find((c) => c.id === "autostart").status, "blocked");
+  assert.deepEqual(matchCapabilities("fill the course request form in chrome", caps).map((c) => c.id), ["chrome_bridge"]);
+});

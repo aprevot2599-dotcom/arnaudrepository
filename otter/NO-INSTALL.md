@@ -18,7 +18,8 @@ One file, `otter-web.html`, opened in Chrome or Edge. No Node.js, no server, no 
    - The **eye** (screen coaching) is hidden and **on hold** until BMCC gives full permission. See "Screen coaching is on hold" below.
    - Ask "how do I send Forms responses to Excel in Power Automate?" (or about approvals, schedules, failed flows, branching forms, XLOOKUP, PivotTables, drop-downs, totals that don't add up, highlighting). Built-in guides answer for 0 tokens.
    - The window grows to show answers, checklists and questions, and shrinks back when you tick the last step or say "done".
-7. **Turn it off:** the red power button, "Hey Otter, shut down", or just close the window. Everything stops: microphone, screen capture, voice, timers. Closing the browser tab ends it completely.
+7. **Make it open with Chrome (optional).** In O.T.T.E.R., Menu > Settings > **Open with Chrome** shows the file's exact address with a Copy button. In Chrome: ⋮ > Settings > On startup > **Open a specific page or set of pages** > **Add a new page**, paste, Add. (Edge: Settings > Start, home, and new tabs > Open these pages.) From then on O.T.T.E.R. opens with Chrome; click **Start Otter** once and it floats. Chrome won't open a floating window without that click, and no page can get around it. Note that this setting replaces "Continue where you left off", so Chrome stops reopening yesterday's tabs. If you'd rather keep those, leave the setting alone, open O.T.T.E.R. once, right-click its tab > **Pin**, and choose "Continue where you left off": the pinned tab comes back each time. If you move or rename the file, update the address.
+8. **Turn it off:** the red power button, "Hey Otter, shut down", or just close the window. Everything stops: microphone, screen capture, voice, timers. Closing the browser tab ends it completely.
 
 ## An advisor, not an actor
 
