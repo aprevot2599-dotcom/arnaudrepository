@@ -59,7 +59,7 @@ test("the route trims what is sent and sets effort; usage is summed exactly", as
   assert.equal(route.tier, "quick");
   assert.ok(!seen.system.includes("secret-ish budget"), "quick route leaves the unreferenced source out");
   assert.equal(seen.turns.length, 5, "4 history turns plus the question");
-  assert.deepEqual(seen.tools.map((t) => t.name).sort(), ["check_capability", "propose_action", "search_knowledge"]);
+  assert.deepEqual(seen.tools.map((t) => t.name).sort(), ["check_capability", "propose_action", "search_knowledge"], "point_at is only offered when a snapshot is attached");
   assert.equal(seen.route.effort, "low");
   assert.equal(res.usage.input_tokens, 4100);
 });

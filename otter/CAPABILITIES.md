@@ -35,6 +35,11 @@ Checked on 2026-10-14 (voice and volume added the same day) in the build environ
 | Helper window | Otter-only start, maximize, mini chat, wake word "Otter", always-on listening, one-command launcher with microphone and sound pre-allowed in its own Chrome profile. |
 | Floating on top | Chrome/Edge Document Picture-in-Picture from the helper (local server). Not on claude.ai. |
 | Learning | Seeded from your brief; offers to remember stated preferences and keeps them only on yes; viewable and forgettable. |
+| No-install closed file | `otter-web.html`: opened in Chrome, talks only to api.anthropic.com (Content Security Policy plus code gate), API key in browser storage only. Tested opened from disk. |
+| Screen coaching | Snapshots while the eye is on (Chrome's picker and sharing bar), memory only, sent only with a question, circles drawn on the snapshot, checklists. |
+| Microsoft 365 guides | 11 built-in Power Automate, Forms and Excel checklists, 0 tokens. |
+| Verifiable log | Hash-chained, no content, verifiable in the app and with an independent script; edits are detected. |
+| Off switch | Power button, "Hey Otter, shut down", or closing the window stops microphone, screen capture, voice and timers. |
 | Growth recommendations | Connector, skill and setup suggestions from usage counts, with evidence, paced to one every three days unless urgent. |
 
 ## Unavailable, and why

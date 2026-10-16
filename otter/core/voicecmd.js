@@ -27,16 +27,20 @@ export function parseCommand(text) {
   if (/^(?:(?:show|open)(?: me)? (?:the )?chat|let me type|type (?:it|instead))(?: please)?$/.test(t)) return { kind: "ui", ui: "chat" };
   if (/^(?:hide|close) (?:the )?chat(?: please)?$/.test(t)) return { kind: "ui", ui: "hide_chat" };
   if (/^(?:float|stay on top|pop out|float (?:on top|the window)|keep (?:it|yourself) on top)(?: please)?$/.test(t)) return { kind: "ui", ui: "float" };
+  if (/^(?:look(?: at (?:my|the) screen)?|watch (?:my|the) screen|see (?:my|the) screen|take a look)(?: please)?$/.test(t)) return { kind: "screen", on: true };
+  if (/^(?:stop (?:looking|watching)|don'?t look|go to sleep|sleep|nap time)(?: please)?$/.test(t)) return { kind: "screen", on: false };
+  if (/^(?:shut (?:down|off|it off|yourself off)|turn (?:off|yourself off)|power (?:off|down)|close otter|otter off|goodbye otter|good night)(?: please)?$/.test(t)) return { kind: "shutdown" };
+  if (/^(?:done|i'?m done|all done|got it|that'?s it|that'?s all|finished|close (?:it|that|the list))(?: thanks| thank you)?$/.test(t)) return { kind: "done" };
   if (/^(?:what do you know about me|what have you learned(?: about me)?|what do you remember(?: about me)?)\??$/.test(t)) return { kind: "profile" };
   if (/^(?:yes|yeah|yep|sure|ok(?:ay)?|please do|remember (?:it|that)|keep it|go ahead)(?: please)?$/.test(t)) return { kind: "confirm", yes: true };
   if (/^(?:no|nope|don't|do not|forget it|skip(?: it)?|never mind|nevermind)(?: thanks)?$/.test(t)) return { kind: "confirm", yes: false };
   return null;
 }
 
-// Wake word: in helper mode O.T.T.E.R. acts only on speech addressed to it ("Otter, ...") or
-// said within the follow-up window after it spoke. Speech recognizers often hear "otter" as
-// "other", "odder" or "auto", so those are accepted at the start of an utterance.
-const WAKE = /^\s*(?:hey |hi |ok |okay )?(?:otter|odder|other|auto|outer|ottar)\b[,.!?:;\s]*/i;
+// Wake phrase: in helper mode O.T.T.E.R. acts only on speech that starts with "Hey Otter" or
+// on a reply said right after it spoke. Speech recognizers often hear "otter" as "other",
+// "odder" or "auto", and "hey" as "hay" or "a", so those spellings are accepted too.
+const WAKE = /^\s*(?:hey|hay|hi|a|ok|okay)[,\s]+(?:otter|odder|other|auto|outer|ottar|order)\b[,.!?:;\s]*/i;
 export function parseWake(text, { followUp = false } = {}) {
   const t = String(text || "").trim();
   const m = t.match(WAKE);

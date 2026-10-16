@@ -8,6 +8,9 @@
 // characters per token, +/-25%) and say so; the local server reports exact usage afterwards.
 import { parseCommand } from "./voicecmd.js";
 import { matchCapabilities } from "./capabilities.js";
+import { findGuide } from "./m365guides.js";
+
+export const IMAGE_TOKENS = 1600; // a 1280x720 screen snapshot is about (1280*720)/750 tokens, rounded up
 
 export const PRICES = { // USD per million tokens, from Anthropic's published table (cached 2026-10-06)
   "claude-opus-5-5": { in: 4, out: 20 },
@@ -17,7 +20,7 @@ export const PRICES = { // USD per million tokens, from Anthropic's published ta
 
 export const TIERS = {
   local: { label: "Local (no Claude)", effort: null, modelTier: null, rounds: 0, outMax: 0, historyTurns: 0, knowledge: 0 },
-  quick: { label: "Quick", effort: "low", modelTier: "quick", rounds: 1, outTypical: 500, outMax: 2500, historyTurns: 4, knowledge: 2, tools: ["check_capability", "propose_action", "search_knowledge"] },
+  quick: { label: "Quick", effort: "low", modelTier: "quick", rounds: 1, outTypical: 500, outMax: 2500, historyTurns: 4, knowledge: 2, tools: ["check_capability", "propose_action", "search_knowledge", "point_at"] },
   standard: { label: "Standard", effort: "medium", modelTier: "default", rounds: 2, outTypical: 1800, outMax: 8000, historyTurns: 12, knowledge: 5, tools: null },
   deep: { label: "Deep", effort: "high", modelTier: "complex", rounds: 4, outTypical: 4500, outMax: 20000, historyTurns: 16, knowledge: 5, tools: null, web: true },
 };
@@ -48,6 +51,7 @@ export function chooseRoute(text, ctx = {}) {
   const capHits = matchCapabilities(t, ctx.capabilities || []);
   if (capHits.length && ABILITY_Q.test(t) && t.length < 160 && capHits.every((c) => c.status !== "ready"))
     return finish("local", ["A question about something O.T.T.E.R. can't do yet; it explains that from its own status list."], ctx, t);
+  if (!ctx.images && findGuide(t)) return finish("local", ["A built-in Power Automate, Forms or Excel guide covers this."], ctx, t);
   if (ctx.engineKind === "offline") return finish("local", ["No Claude connection; built-in analyzers only."], ctx, t);
 
   let tier = "quick";
@@ -59,6 +63,7 @@ export function chooseRoute(text, ctx = {}) {
   if (frames.includes("decision") || intents.includes("new_program")) { tier = "standard"; reasons.push("A decision needs the full recommendation frame."); }
   if (analysisSkills) { tier = "standard"; reasons.push(`${analysisSkills} of your skills inform this.`); }
   if (t.length > 600) { tier = "standard"; reasons.push("Long request."); }
+  if (ctx.images) reasons.push("Includes one snapshot of your screen (about 1,600 tokens).");
   const wantsDepth = DEEP_ASK.test(t);
   const meritsDeep = wantsDepth || intents.includes("research") || intents.includes("grant") || frames.includes("decision");
   if (wantsDepth) { tier = "deep"; reasons.push("You asked for depth."); }
@@ -76,7 +81,7 @@ function finish(tier, reasons, ctx, text, includeSources = false) {
   if (tier === "local") return { tier, label: T.label, reasons, include: {}, estimate: { input: 0, output: 0, total: 0, perRound: 0, rounds: 0, costUsd: 0, exact: true } };
   const history = (ctx.history || []).slice(-T.historyTurns);
   const sources = includeSources ? ctx.sources || [] : [];
-  const perRound = OVERHEAD.system + (T.tools ? OVERHEAD.toolsQuick : OVERHEAD.toolsAll) + estimateTokens(text) + history.reduce((a, h) => a + estimateTokens(h.content), 0) + sources.reduce((a, s) => a + estimateTokens(s.text), 0) + T.knowledge * 120;
+  const perRound = (ctx.images || 0) * IMAGE_TOKENS + OVERHEAD.system + (T.tools ? OVERHEAD.toolsQuick : OVERHEAD.toolsAll) + estimateTokens(text) + history.reduce((a, h) => a + estimateTokens(h.content), 0) + sources.reduce((a, s) => a + estimateTokens(s.text), 0) + T.knowledge * 120;
   // Each tool round resends the whole conversation, so input grows with rounds.
   const input = Math.round(perRound * T.rounds + (T.rounds - 1) * 600);
   const output = T.outTypical;
@@ -85,7 +90,7 @@ function finish(tier, reasons, ctx, text, includeSources = false) {
     tier, label: T.label, reasons, model,
     effort: T.effort, modelTier: T.modelTier,
     include: { sources: includeSources, historyTurns: T.historyTurns, knowledge: T.knowledge, tools: T.tools, web: !!T.web && !!ctx.webAllowed },
-    estimate: { input, output, outputMax: T.outMax, total: input + output, perRound, rounds: T.rounds, costUsd: ctx.engineKind === "server" ? costUsd(model, input, output) : null, exact: false },
+    estimate: { input, output, outputMax: T.outMax, total: input + output, perRound, rounds: T.rounds, costUsd: ctx.engineKind === "server" || ctx.engineKind === "direct" ? costUsd(model, input, output) : null, exact: false },
   };
 }
 

@@ -8,13 +8,14 @@ import { assessCapabilities, matchCapabilities } from "../core/capabilities.js";
 import { buildSystemPrompt } from "../core/agent.js";
 import { PermissionRegistry } from "../core/security.js";
 
-test("wake word: only speech addressed to Otter is acted on", () => {
-  assert.deepEqual(parseWake("Otter, what's on my plate?"), { addressed: true, text: "what's on my plate?" });
+test("wake phrase: only speech starting with Hey Otter is acted on", () => {
+  assert.deepEqual(parseWake("Hey Otter, what's on my plate?"), { addressed: true, text: "what's on my plate?" });
   assert.deepEqual(parseWake("hey otter louder"), { addressed: true, text: "louder" });
-  assert.equal(parseWake("other, check the budget").addressed, true, "common mishearing accepted");
-  assert.equal(parseWake("the budget meeting moved to Thursday").addressed, false, "side conversation ignored");
+  assert.equal(parseWake("hay other, check the budget").addressed, true, "common mishearings accepted");
+  assert.equal(parseWake("Otter, check the budget").addressed, false, "plain Otter no longer wakes it");
+  assert.equal(parseWake("the other budget moved to Thursday").addressed, false, "side conversation ignored");
   assert.equal(parseWake("the budget meeting moved", { followUp: true }).addressed, true, "a reply right after Otter spoke counts");
-  assert.deepEqual(parseWake("Otter"), { addressed: true, text: "" });
+  assert.deepEqual(parseWake("Hey Otter"), { addressed: true, text: "" });
 });
 
 test("helper voice commands: window, chat, float, yes/no, profile", () => {
@@ -25,6 +26,10 @@ test("helper voice commands: window, chat, float, yes/no, profile", () => {
   assert.deepEqual(parseCommand("yes please"), { kind: "confirm", yes: true });
   assert.deepEqual(parseCommand("no thanks"), { kind: "confirm", yes: false });
   assert.equal(parseCommand("what do you know about me?").kind, "profile");
+  assert.deepEqual(parseCommand("look at my screen"), { kind: "screen", on: true });
+  assert.deepEqual(parseCommand("stop looking"), { kind: "screen", on: false });
+  assert.deepEqual(parseCommand("shut down"), { kind: "shutdown" });
+  assert.deepEqual(parseCommand("got it thanks"), { kind: "done" });
   assert.equal(parseCommand("Should we maximize enrollment in Boardman?"), null);
 });
 

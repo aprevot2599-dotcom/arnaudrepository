@@ -1,0 +1,50 @@
+# O.T.T.E.R. without installing anything
+
+One file, `otter-web.html`, opened in Chrome or Edge. No Node.js, no server, no admin rights, no browser extension, no Microsoft 365 connection. It talks to exactly one outside address, `api.anthropic.com`, and writes everything it does to a log you can check.
+
+## Steps
+
+**On a personal computer first.** Until BMCC IT says otherwise, don't run it on a BMCC laptop and don't let it look at BMCC Outlook, Excel, Forms or Power Automate screens (see "Before you use it on BMCC work").
+
+1. **Get an API key.** On a personal device, go to console.anthropic.com, sign in or create an account, add a payment method or credits under Billing, then API Keys > Create Key. Copy the key (it starts with `sk-ant-`). Set a monthly spend limit under Limits.
+2. **Save the file.** Save `otter-web.html` (sent to you in chat, or built with `npm run build:artifact` into `otter/dist/`) to your Desktop or Documents.
+3. **Open it.** Right-click > Open with > Google Chrome (or Microsoft Edge).
+4. **Start.** Paste the API key into the start card. Leave "Listen for Hey Otter" unticked if you want a fully closed system (see below). Click **Start Otter**.
+5. **The otter floats.** A small always-on-top window opens with just the otter. Chrome decides where it first appears; it's usually the bottom-right corner. If not, drag it there. The original tab says O.T.T.E.R. is floating and has a button to bring it back.
+6. **Use it:**
+   - Type or tap the chat bubble to ask something.
+   - Tap the **eye** to let it look at your screen. Chrome asks which screen, window or tab to share and shows "sharing" the whole time. Then ask "where is…?" or "what's next?" It circles the spot on a snapshot and gives a checklist.
+   - Ask "how do I send Forms responses to Excel in Power Automate?" (or about approvals, schedules, failed flows, branching forms, XLOOKUP, PivotTables, drop-downs, totals that don't add up, highlighting). Built-in guides answer for 0 tokens.
+   - The window grows to show answers, checklists and questions, and shrinks back when you tick the last step or say "done".
+7. **Turn it off:** the red power button, "Hey Otter, shut down", or just close the window. Everything stops: microphone, screen capture, voice, timers. Closing the browser tab ends it completely.
+
+## What "closed" means here, and how to check it
+
+- **Only one outside address.** The file carries a Content Security Policy that tells Chrome to refuse every network connection except `https://api.anthropic.com`, and to refuse every outside script, font and style. Chrome enforces this, not O.T.T.E.R.
+- **A second check in the code.** Every request also goes through a gate that refuses other hosts and writes the request to the log.
+- **What's stored:** conversations, settings and the log stay in this browser's storage on this computer. Screen pictures are never stored: the latest one is kept in memory and discarded when sharing stops.
+- **The API key** is kept in its own browser slot. It is never exported or written to the log, and it is sent only to Anthropic.
+- **The log** (Menu > Abilities & growth > Verifiable log) records each session start and stop, microphone on/off, screen sharing on/off, each snapshot taken and each one sent, every request (size, fingerprint, tokens) and every approval. It never records what you said or what was on screen. Each entry's fingerprint covers the previous one, so editing or deleting any entry breaks the chain. **Verify the log** checks it in the app. To check it independently, **Download log**, then on any computer with Node.js run `node scripts/verify-log.mjs otter-ledger.json`. It reports VERIFIED or BROKEN and lists every outside address ever contacted.
+- **You can watch it yourself:** press F12 > Network in Chrome while using O.T.T.E.R. Every request shown should go to api.anthropic.com.
+
+## The one exception: "Hey Otter"
+
+Chrome turns speech into text by sending microphone audio to Google's servers, outside O.T.T.E.R.'s control and outside the Content Security Policy. So in closed mode, O.T.T.E.R. doesn't listen; you type, tap and click. If you tick "Listen for Hey Otter", it listens and acts only on speech that begins with "Hey Otter", and the log records that you turned the exception on. Speaking answers out loud uses only voices installed on your computer while closed mode is on.
+
+## Before you use it on BMCC work
+
+- **Screen pictures are content.** A snapshot of Outlook, Excel, Forms or Power Automate sent to Claude is BMCC Microsoft 365 content going to Claude, which is exactly what BMCC hasn't approved yet. O.T.T.E.R. sends a picture only when you ask a question while the eye is on, and logs each one, but it can't tell what's on the picture before it goes. Use the eye on practice files, your own test flows, or non-BMCC accounts until IT approves.
+- **Student records.** If a FERPA-protected screen is visible, don't ask while looking. The privacy guard can scan text, but it cannot scan pictures.
+- **A BMCC computer.** Opening an HTML file isn't installing software, but it is still an AI tool sending data from a BMCC machine. Ask IT before using it there. Their browser policy may also block screen sharing, the microphone, or floating windows; O.T.T.E.R. will say so if it does.
+
+## What it can't do in this version, and why
+
+| It can't | Why | The missing piece | With it, it could |
+|---|---|---|---|
+| Point at your real screen | A web page can't draw over other apps | A small desktop app (needs installing) | Put a circle on the real button instead of on a picture |
+| Click or type for you | By design: it only explains | Nothing; this is deliberate | |
+| Change the computer's volume | Web pages can't | The local server version (needs Node.js) | Set 20% at start, change on request |
+| Listen while fully closed | Chrome's speech service is Google's | A speech engine that runs inside the page (about 40-75 MB, a future build) | "Hey Otter" with nothing leaving the computer |
+| Always open in the bottom-right corner | Chrome chooses the floating window's first position | Nothing a page can do; drag it once | |
+| Grow the floating window after a spoken request | Chrome allows resizing only right after a click | Nothing a page can do | It fills the small window and scrolls instead; any click lets it grow |
+| Read Outlook or Excel files directly | No Microsoft 365 connection, by BMCC policy | BMCC IT approval of a connector | Work from your files without screenshots or copy and paste |

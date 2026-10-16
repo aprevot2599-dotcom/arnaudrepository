@@ -33,7 +33,9 @@ function table(rows) {
   return `<div class="table-wrap"><table><thead><tr>${head.map((h) => `<th>${inline(h)}</th>`).join("")}</tr></thead><tbody>${body.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
-export function renderMarkdown(src) {
+let taskN = 0; // checkbox ids stay unique within one rendered message
+export function renderMarkdown(src, { nested = false } = {}) {
+  if (!nested) taskN = 0;
   const lines = esc(String(src || "").replace(/\r/g, "")).split("\n");
   const out = [];
   let i = 0;
@@ -64,7 +66,7 @@ export function renderMarkdown(src) {
       const label = CALLOUT_LABELS[kind] || kind;
       // inner is escaped already; unescape once so the recursive call escapes it exactly once
       const raw = inner.join("\n").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
-      out.push(`<section class="callout callout-${esc(kind)}"><header>${esc(label)}</header>${renderMarkdown(raw)}</section>`);
+      out.push(`<section class="callout callout-${esc(kind)}"><header>${esc(label)}</header>${renderMarkdown(raw, { nested: true })}</section>`);
       continue;
     }
     if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1])) {
@@ -88,9 +90,12 @@ export function renderMarkdown(src) {
       while (i < lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) {
         let item = lines[i++].replace(/^\s*([-*+]|\d+[.)])\s+/, "");
         while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) item += " " + lines[i++].trim();
-        items.push(`<li>${inline(item)}</li>`);
+        const task = item.match(/^\[( |x|X)\]\s+(.*)$/);
+        if (task) { taskN++; items.push(`<li class="task"><label><input type="checkbox" data-task="${taskN}"${task[1] !== " " ? " checked" : ""}> <span>${inline(task[2])}</span></label></li>`); }
+        else items.push(`<li>${inline(item)}</li>`);
       }
-      out.push(ordered ? `<ol>${items.join("")}</ol>` : `<ul>${items.join("")}</ul>`);
+      const isTasks = items.some((x) => x.startsWith('<li class="task"'));
+      out.push(ordered ? `<ol${isTasks ? ' class="tasks"' : ""}>${items.join("")}</ol>` : `<ul${isTasks ? ' class="tasks"' : ""}>${items.join("")}</ul>`);
       continue;
     }
     if (/^&gt;\s?/.test(line)) {

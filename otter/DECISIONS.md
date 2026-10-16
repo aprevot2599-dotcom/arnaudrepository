@@ -53,3 +53,14 @@ Everything O.T.T.E.R. needs from you, in the order I'd make the calls. Each row 
 |---|---|---|---|---|
 | 24 | Always-on listening | Wake word "Otter" (current) / push-to-talk only / no wake word | Keep the wake word. Without it every word near your desk goes to Google and is sent to Claude, costing tokens and risking student or personnel details | Wake word on |
 | 25 | Where the helper runs | Your BMCC laptop / a personal computer | Ask BMCC IT before running it on a BMCC-managed machine: it installs Node.js, runs a local server, and opens Chrome with auto-allowed microphone in a separate profile | Your call |
+
+## 6. No-install, closed version
+
+| # | Decision | Options | My recommendation | Until you decide |
+|---|---|---|---|---|
+| 26 | Where to run it first | Personal computer / BMCC computer | Personal computer, with practice files, until IT answers 27 and 28 | Your call |
+| 27 | Ask IT: may an AI tool opened from an HTML file in Chrome send questions to Anthropic from a BMCC computer? | Ask now / later | Ask now; it's the smallest possible footprint (one file, one outside address, a verifiable log) | Don't use on BMCC machines |
+| 28 | Ask IT: may screen snapshots of Microsoft 365 apps be sent to Claude? | Ask together with 27 | Ask together; it's the same question as the M365 connector in a different form | Eye only on non-BMCC screens |
+| 29 | "Hey Otter" listening | Closed (type and click only) / allow Chrome speech (audio to Google) | Closed for BMCC work; allow speech on your personal computer if you like | Closed |
+| 30 | Local speech engine so "Hey Otter" works while closed | Build it (40-75 MB, CPU use, a few hours of work) / not now | Build it after a week of using the closed version, if voice turns out to matter | Not built |
+| 31 | API spending limit | Set one at console.anthropic.com > Limits | Set a monthly limit you're comfortable with before first use | No limit set by O.T.T.E.R. |

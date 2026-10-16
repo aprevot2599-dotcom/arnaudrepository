@@ -80,7 +80,10 @@ Reports are kept for 30 days in `data/local/verification/` (git-ignored).
 ## Decisions
 Every open decision, with my recommendation and the current default: [DECISIONS.md](DECISIONS.md).
 
-## The helper window (start here)
+## No install, closed system (start here if you can't install anything)
+One file, `otter-web.html`, opened in Chrome. It floats as a small otter, coaches you through Power Automate, Forms and Excel from screen snapshots it takes only while the eye is on, circles what you're looking for on the snapshot, gives checklists, talks only to api.anthropic.com, and keeps a log you can verify. Full steps, what "closed" means, how to check it, and what to clear with BMCC first: **[NO-INSTALL.md](NO-INSTALL.md)**.
+
+## The helper window (local server version)
 O.T.T.E.R. opens as a small window showing just the otter, listening, with everything switched on.
 
 **Start it:** double-click `launch/OTTER Helper.command` (Mac) or `launch/OTTER Helper.bat` (Windows), or run `npm run helper`. It starts the local server and opens O.T.T.E.R. in its own 340×460 Chrome (or Edge) window. That window uses a separate browser profile (`data/local/chrome-profile`) where the microphone and sound are allowed from the start, so there is nothing to click through. Your normal Chrome is untouched.
@@ -114,9 +117,12 @@ The model can call exactly six tools (plus web search in local-server mode when 
 
 ## Tests
 ```bash
-npm test          # 44 tests: the 15 required fail-safes, email parsing, server boundaries, voice commands,
+npm test          # 44+ tests: the 15 required fail-safes, email parsing, server boundaries, voice commands,
                   # volume control, self-knowledge, recommendations, routing, token estimates, morning check
 npm run verify    # the morning check, once, from the command line
+npm run test:web  # builds otter-web.html and tests it opened from disk: floating window, closed network, snapshots,
+                  # circles, checklists, log verification and tamper detection, shut-off
+npm run verify-log -- otter-ledger.json   # checks an exported log independently
 npm run test:ui   # browser smoke test (needs Playwright): onboarding, voice setup, launch volume prompt, voice
                   # commands, approval flow, abilities page, privacy block, phone layout
 ```
@@ -141,6 +147,11 @@ core/router.js            cheapest-route-first routing and token estimates
 core/verify.js            morning check: schedule, browser checks, report
 core/learn.js             what O.T.T.E.R. knows about you and how it learns more
 scripts/helper.js         starts the server and opens the helper window in Chrome or Edge
+core/ledger.js            hash-chained verifiable log and the one-address network gate
+core/m365guides.js        built-in Power Automate, Forms and Excel checklists
+public/screen.js          screen snapshots while the eye is on (memory only)
+scripts/verify-log.mjs    independent log checker
+dist/otter-web.html       the closed, no-install file (built, not committed)
 launch/                   double-click launchers for Mac and Windows
 lib/verify-server.js      morning check: server checks, scheduler, report storage
 scripts/verify.js         morning check for an operating-system scheduler

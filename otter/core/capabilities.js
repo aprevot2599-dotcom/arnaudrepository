@@ -32,7 +32,9 @@ export function assessCapabilities(env = {}) {
     add({ id: "speak", name: "Speak with a human-like male voice", status: "needs_you", why: `The most natural male voice here ("${sp.cloudMaleVoice}") is an online voice: the text I speak is sent to ${sp.cloudVendor || "the browser maker"} to be turned into audio. That is an outside service, so it needs your OK.`, missing: "Your permission in Settings > Voice > Allow online voices, if BMCC policy allows it.", unlocks: "use the most human-sounding male voice this browser offers." });
   else add({ id: "speak", name: "Speak with a human-like male voice", status: "missing", why: "No male voice is installed in this browser.", missing: "Mac: download Evan or Nathan (Enhanced) in Spoken Content settings. Windows: use Microsoft Edge. Chromebook or Chrome: the \"Google UK English Male\" voice (online).", unlocks: "answer out loud in a male voice." });
 
-  if (env.engineKind !== "server" && !env.serverRunning)
+  if (env.closedMode && (env.topLevel || env.serverRunning))
+    add({ id: "listen", name: "Hear you (Hey Otter)", status: "needs_you", why: "Closed mode is on. Hearing you would use Chrome's speech service, which sends microphone audio to Google.", missing: "Turn on \u201cHey Otter\u201d (Settings > Engine, untick Closed mode) and accept that one exception, or a speech engine that runs on this computer (a future build step).", unlocks: "wake on \u201cHey Otter\u201d and talk hands-free." });
+  else if (env.engineKind !== "server" && !env.serverRunning && !env.topLevel)
     add({ id: "listen", name: "Hear you (hands-free conversation)", status: "blocked", why: "Pages on claude.ai are not allowed to use the microphone.", missing: "The local server version, opened in Chrome, Edge or Safari on your computer. Meanwhile, use your keyboard's dictation (Windows+H, or Fn twice on a Mac) in the message box.", unlocks: "hold a hands-free conversation: you talk, pause, I answer out loud and listen again." });
   else if (!sp.recognition)
     add({ id: "listen", name: "Hear you (hands-free conversation)", status: "missing", why: "This browser has no speech recognition (Firefox doesn't).", missing: "Chrome, Edge or Safari.", unlocks: "hold a hands-free conversation." });
@@ -41,7 +43,7 @@ export function assessCapabilities(env = {}) {
   else add({ id: "listen", name: "Hear you (hands-free conversation)", status: "ready", can: sp.onDevice ? "Listening, transcribed on this device." : "Listening through the browser's speech service." });
 
   if (!server)
-    add({ id: "system_volume", name: "Control your computer's volume", status: "blocked", why: "Browsers do not let any web page change the computer's volume. That protection applies to claude.ai pages too.", missing: "The local server running on your computer (npm start), which can use your operating system's volume command.", unlocks: "set the computer to 20% at launch and raise or lower it when you ask, each change approved by you." });
+    add({ id: "system_volume", name: "Control your computer's volume", status: "blocked", why: "Browsers do not let any web page change the computer's volume, and the no-install version has nothing else to ask.", missing: "The local server running on your computer (npm start), which needs Node.js installed. Until then, use the speaking-volume slider and your keyboard's volume keys.", unlocks: "set the computer to 20% at launch and raise or lower it when you ask, each change approved by you." });
   else if (!vol.available)
     add({ id: "system_volume", name: "Control your computer's volume", status: "missing", why: vol.reason || "The local server could not find a volume control tool on this computer.", missing: vol.fix || "macOS: built in. Windows: PowerShell (built in). Linux: install pulseaudio-utils (pactl) or alsa-utils (amixer).", unlocks: "change the computer's volume when you approve it." });
   else if (!env.systemVolumePermitted)

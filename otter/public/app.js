@@ -6,7 +6,10 @@ import { renderMarkdown, esc } from "./markdown.js";
 import { Store } from "./store.js";
 import { PermissionRegistry, ApprovalGate, AuditLog, SYSTEMS, ACTION_TYPES, describeProposalStatus, skillStatus, newId } from "../core/security.js";
 import { scanSensitive, redact, redactForLog, detectInjection } from "../core/privacy.js";
-import { runTurn, artifactTransport, serverTransport, offlineTransport, offlineAnswer } from "../core/agent.js";
+import { runTurn, artifactTransport, serverTransport, offlineTransport, offlineAnswer, directTransport } from "../core/agent.js";
+import { Ledger, verifyChain, makeClosedFetch, ALLOWED_HOSTS } from "../core/ledger.js";
+import { findGuide, guideMarkdown } from "../core/m365guides.js";
+import { ScreenWatcher } from "./screen.js";
 import { assessCapabilities, matchCapabilities, explain, STATUS_TEXT } from "../core/capabilities.js";
 import { recordTurn, recordExecution, recommend, dueRecommendation, markShown, recommendationMarkdown } from "../core/advisor.js";
 import { parseCommand, parseWake } from "../core/voicecmd.js";
@@ -32,6 +35,14 @@ const audit = new AuditLog(D.audit, { redact: redactForLog });
 D.audit = audit.entries;
 audit.listeners.add(() => store.save());
 const permissions = new PermissionRegistry(D.permissions, { audit });
+// Verifiable ledger: hash-chained record of every session event and everything sent out.
+const ledger = new Ledger(D.ledger || (D.ledger = []), { onChange: () => store.save() });
+audit.listeners.add((e) => { if (/^(action|permission|privacy|source|skill|knowledge)\./.test(e.event)) ledger.append("audit." + e.event, { id: e.id || "", type: e.type || "", system: e.system || "", status: e.status || "" }); });
+const closedFetch = makeClosedFetch(ledger, { selfOrigin: location.origin.startsWith("http") ? location.origin : null });
+// The API key lives in its own browser-storage slot: never in exports, never in the ledger.
+const KEY_SLOT = "otter.apikey";
+const readKey = () => { try { return localStorage.getItem(KEY_SLOT) || ""; } catch { return ""; } };
+const writeKey = (k) => { try { k ? localStorage.setItem(KEY_SLOT, k) : localStorage.removeItem(KEY_SLOT); } catch {} };
 const savePerms = () => { D.permissions = permissions.toJSON(); store.save(); };
 
 const executors = {
@@ -162,6 +173,11 @@ async function detectEngine() {
     const sample = await window.claude.use("sample").catch(() => null);
     if (sample) return { kind: "artifact", transport: artifactTransport(sample), label: "Claude via claude.ai", detail: "Uses your claude.ai account inside this private artifact. No web access in this mode." };
   }
+  if (window.top === window) {
+    const apiKey = readKey();
+    if (apiKey) return { kind: "direct", transport: directTransport({ apiKey, closedFetch }), label: "Claude API · direct", detail: "This page talks only to api.anthropic.com with your key, stored in this browser. Nothing is installed.", cap: { model: "claude-opus-5-5" } };
+    return { kind: "offline", needsKey: true, transport: offlineTransport, label: "Add your API key", detail: "Paste an Anthropic API key in Settings to connect Claude. Built-in guides and checkers work without it." };
+  }
   return { kind: "offline", transport: offlineTransport, label: "Built-in analyzers only", detail: "No Claude connection found. Open the claude.ai link or run the local server with an API key." };
 }
 
@@ -191,7 +207,7 @@ function renderEngine() {
   pill.title = engine.detail;
   const pp = $("privacyPill");
   pp.hidden = false;
-  pp.textContent = store.available ? "Stored on this device only" : "Storage unavailable: nothing is saved";
+  pp.textContent = (closedMode() ? "Closed · " : "Closed except speech · ") + (store.available ? "stored on this device only" : "storage unavailable: nothing is saved");
 }
 
 // ---------- conversations ----------
@@ -334,6 +350,8 @@ function messageNode(m) {
   if (isUser) bubble.textContent = m.content;
   else bubble.innerHTML = renderMarkdown(m.content || "");
   if (m.content || isUser) n.append(bubble);
+  if (!isUser) wireChecklist(bubble, m);
+  if (m.snapshotId || m.pointers?.length) n.append(snapshotNode(m));
   if (!isUser && (m.content || "").length > 2600) {
     bubble.classList.add("collapsed");
   }
@@ -457,7 +475,10 @@ async function send(text, { forceTier = null, confirmed = false } = {}) {
   speaker.stop();
   const cmd = parseCommand(text);
   if (cmd) { $("input").value = ""; autosize(); return handleCommand(cmd, text); }
-  const route = routeFor(text, forceTier);
+  // While O.T.T.E.R. is looking, a question takes a fresh snapshot along (and only then).
+  let turnSnapshot = null;
+  if (watcher.active && engine.kind !== "offline" && engine.kind !== "artifact") turnSnapshot = await watcher.capture();
+  const route = routeFor(text, forceTier, turnSnapshot ? 1 : 0);
   if (route.tier === "local") { $("input").value = ""; autosize(); const r = answerLocally(text, route); offerLearning(text); return r; }
   if (!confirmed && D.settings.askAboveTokens && route.estimate.total > D.settings.askAboveTokens) return preflight(text, route);
   if (engine.kind !== "offline" && !serviceApproved()) { askServiceApproval(() => send(text)); return; }
@@ -492,6 +513,9 @@ async function send(text, { forceTier = null, confirmed = false } = {}) {
     gate, permissions, registry, settings: D.settings, knowledge: D.knowledge, projects: D.projects,
     rawSources: current.sourceIds.map((id) => D.sources[id]).filter(Boolean),
     capabilities: assessCapabilities(capEnv()),
+    snapshot: turnSnapshot,
+    addPointer: (pt) => { (reply.pointers ||= []).push(pt); },
+    onImageSent: (snap) => { reply.snapshotId = keepSnapshot(snap); ledger.append("screen.sent", { width: snap.width, height: snap.height, to: "api.anthropic.com" }); },
     usedSkills,
     addFinding: (f) => {
       const saved = { ...f, id: newId("f"), createdAt: Date.now(), conversationId: current.id, evidence: f.evidence.map((e) => ({ ...e, sourceTitle: e.sourceId ? D.sources[e.sourceId]?.title || e.sourceId : e.title })) };
@@ -547,6 +571,9 @@ async function send(text, { forceTier = null, confirmed = false } = {}) {
   current.messages.push(reply);
   current.updatedAt = Date.now();
   if (reply.route && !reply.notice?.text?.startsWith("Privacy guard")) logTokens(reply);
+  ledger.append("claude.answer", { route: reply.route?.tier || "", tokensIn: reply.usage?.input_tokens ?? null, tokensOut: reply.usage?.output_tokens ?? null, estimated: !reply.usage?.rounds, snapshot: !!reply.snapshotId });
+  noteActivity();
+  if (viewMode === "mini" && (reply.content || reply.notice)) expandHelper();
   store.save();
   live.replaceWith(messageNode(reply));
   scroll();
@@ -788,6 +815,9 @@ function renderSettings() {
       <div class="card"><h3>Engine</h3><div><b>${esc(engine.label)}</b></div><p class="hint" style="margin:0">${esc(engine.detail)}</p>
         ${svc ? `<label class="switch"><input id="svcOk" type="checkbox" ${serviceApproved() ? "checked" : ""}><span>BMCC permits sending non-protected work content to ${esc(SYSTEMS[svc].label)}.</span></label>` : ""}
         <p class="hint" style="margin:0">Outlook and Claude in Chrome: no supported bridge exists from this app, so neither is connected. Add emails with <b>+ Add source</b> (paste or file). Skills that need Chrome are handed off with an approved brief.</p>
+        ${window.top === window && !engine.token ? `<label class="field"><span>Anthropic API key</span><input id="sKey" type="password" placeholder="${readKey() ? "saved (hidden)" : "sk-ant-..."}" autocomplete="off"><small>Kept only in this browser, never exported or logged. Sent only to api.anthropic.com.</small></label><div class="toolbar"><button type="button" class="btn" id="sKeySave">Save key</button><button type="button" class="btn btn-bad" id="sKeyForget">Forget key</button></div>` : ""}
+        <label class="switch"><input id="sClosed" type="checkbox" ${closedMode() ? "checked" : ""}><span>Closed mode: talk only to api.anthropic.com. Turning this off allows “Hey Otter” listening (Chrome sends audio to Google) and online voices.</span></label>
+        <label class="field"><span>Fall asleep (stop looking at the screen) after</span><select id="sAwake">${[5, 10, 20, 30].map((v) => `<option value="${v}" ${(+S.awakeMinutes || 10) === v ? "selected" : ""}>${v} quiet minutes</option>`).join("")}</select></label>
         <button type="button" class="btn" id="rerunOnboard">Run setup questions again</button></div>
       <div class="card"><h3>Privacy</h3>
         <label class="switch"><input id="allowContact" type="checkbox" ${S.allowContactDetails ? "checked" : ""}><span>Allow work email addresses and phone numbers to be sent (otherwise replaced with placeholders).</span></label>
@@ -832,6 +862,12 @@ function renderSettings() {
   const $$ = (s) => page.querySelector(s);
   if (svc) $$("#svcOk").onchange = (e) => (e.target.checked ? approveService() : revokeService(svc));
   $$("#rerunOnboard").onclick = () => runOnboarding();
+  $$("#sClosed").onchange = (e) => { setClosedMode(e.target.checked, "turned off in Settings"); renderSettings(); };
+  $$("#sAwake").onchange = (e) => { S.awakeMinutes = +e.target.value; store.save(); };
+  if (page.querySelector("#sKeySave")) {
+    $$("#sKeySave").onclick = async () => { const k = $$("#sKey").value.trim(); if (!k) return; writeKey(k); engine = await detectEngine(); approveService(); ledger.append("engine.connected", { engine: engine.kind, host: "api.anthropic.com" }); renderEngine(); renderSettings(); toast("Key saved in this browser."); };
+    $$("#sKeyForget").onclick = async () => { writeKey(""); engine = await detectEngine(); ledger.append("engine.disconnected", {}); renderEngine(); renderSettings(); toast("Key removed from this browser."); };
+  }
   $$("#allowContact").onchange = (e) => { S.allowContactDetails = e.target.checked; audit.record("privacy.contact_details", { allowed: S.allowContactDetails }); store.save(); };
   $$("#ferpaOn").onchange = (e) => { $$("#ferpaFields").hidden = !e.target.checked; if (!e.target.checked) { S.ferpaAttested = false; audit.record("privacy.ferpa", { attested: false }); store.save(); } else toast("Fill in the basis and approver to turn this on."); };
   const ferpaSave = () => { const b = $$("#ferpaBasis").value.trim(), a = $$("#ferpaApprover").value.trim(); S.ferpaBasis = b; S.ferpaApprover = a; S.ferpaAttested = !!(b && a && $$("#ferpaOn").checked); audit.record("privacy.ferpa", { attested: S.ferpaAttested }); store.save(); };
@@ -881,7 +917,7 @@ function renderSettings() {
   $$("#askAbove").onchange = (e) => { S.askAboveTokens = +e.target.value; store.save(); };
   $$("#retention").onchange = (e) => { S.retentionDays = +e.target.value; const n = store.purgeExpired(); store.save(); renderHistory(); toast(n ? `Removed ${n} old conversation(s).` : "Retention updated."); };
   $$("#exportAll").onclick = () => copyText(store.exportJSON());
-  $$("#wipeAll").onclick = async () => { if (await confirmBox("Delete everything?", "All conversations, sources, findings, knowledge, approvals, permissions and settings on this device will be erased. This cannot be undone.", "Delete all", true)) { store.wipe(); location.reload(); } };
+  $$("#wipeAll").onclick = async () => { if (await confirmBox("Delete everything?", "All conversations, sources, findings, knowledge, approvals, permissions, settings, the log and the API key on this device will be erased. This cannot be undone.", "Delete all", true)) { store.wipe(); writeKey(""); location.reload(); } };
   const kb = $$("#kbList");
   for (const k of D.knowledge) {
     const n = h(`<div class="ditem"><div class="row"><b>${esc(k.title)}</b><button type="button" class="link-btn danger" style="margin-left:auto">Delete</button></div><span>${esc(k.text.slice(0, 220))}</span><span class="hint">${esc(k.provenance || "")} · ${fmtDate(k.createdAt)}</span></div>`);
@@ -1017,12 +1053,12 @@ function runOnboarding({ only = null, onDone = null } = {}) {
 }
 
 // ---------- routing and token accounting ----------
-function routeFor(text, forceTier = null) {
+function routeFor(text, forceTier = null, images = 0) {
   const sources = current ? current.sourceIds.map((id) => D.sources[id]).filter(Boolean) : [];
   const plan = planRequest(text, registry, { permissions, settings: D.settings });
   const history = current ? current.messages.filter((m) => m.content && !m.local).map((m) => ({ content: m.content })) : [];
   return chooseRoute(text, {
-    plan, sources, history, forceTier,
+    plan, sources, history, forceTier, images,
     engineKind: engine.kind,
     webAllowed: permissions.check("web_research", "read"),
     capabilities: assessCapabilities(capEnv()),
@@ -1072,6 +1108,8 @@ function preflight(text, route) {
 }
 
 function answerLocally(text, route) {
+  const guide = findGuide(text);
+  if (guide) { audit.record("guide.shown", { id: guide.id }); const r = addLocalMessages(text, guideMarkdown(guide), { speak: false }); if (D.settings.voiceOn) speaker.speak(`Here are the steps to ${guide.title.toLowerCase()}. I'll go through them with you.`, { mode: "full" }); if (viewMode === "mini") expandHelper(); return r; }
   if (/^(run (the )?(morning|daily) check|verify yourself|self[- ]check|morning check)\b/i.test(text)) { addLocalMessages(text, "Running the morning check now. It uses no Claude tokens.", { speak: false }); return runMorningCheck("manual", { post: true }); }
   const caps = matchCapabilities(text, assessCapabilities(capEnv()));
   if (caps.length) return addLocalMessages(text, `:::understood\nYou're asking whether I can ${caps.map((c) => c.name.toLowerCase()).join(" and ")}. I answered from my own status list, so this used 0 tokens.\n:::\n\n${caps.map(explain).join("\n\n")}`);
@@ -1127,7 +1165,7 @@ async function runMorningCheck(trigger, { post = true } = {}) {
 let preSpeakState = "idle";
 let conversationLive = false; // set by a click; browsers require one before listening
 const speaker = new Speaker({
-  getSettings: () => ({ ...D.settings, allowCloudVoices: permissions.check("cloud_voice", "read") }),
+  getSettings: () => ({ ...D.settings, allowCloudVoices: !closedMode() && permissions.check("cloud_voice", "read") }),
   onStart: () => { if (otter.state !== "speaking") preSpeakState = otter.state; setActivity("speaking"); },
   onEnd: (interrupted) => { setActivity(["speaking", "thinking"].includes(preSpeakState) ? "idle" : preSpeakState); if (!interrupted) afterSpeaking(); },
 });
@@ -1165,7 +1203,7 @@ function voiceEnv() {
 function capEnv() {
   return {
     engineKind: engine.kind, serverRunning: !!engine.token, serviceApproved: serviceApproved(), webResearch: permissions.check("web_research", "read"),
-    speech: voiceEnv(), systemVolume: engine.cap?.systemVolume || {}, floatSupported: canFloat(), systemVolumePermitted: permissions.check("system_volume", "write"), ferpaAttested: D.settings.ferpaAttested,
+    speech: voiceEnv(), systemVolume: engine.cap?.systemVolume || {}, floatSupported: canFloat(), topLevel: window.top === window, closedMode: closedMode(), systemVolumePermitted: permissions.check("system_volume", "write"), ferpaAttested: D.settings.ferpaAttested,
   };
 }
 const capability = (id) => assessCapabilities(capEnv()).find((c) => c.id === id);
@@ -1173,7 +1211,7 @@ function advisorEnv() {
   return { engineKind: engine.kind, webResearch: permissions.check("web_research", "read"), voice: { ...voiceEnv(), premiumWanted: (D.usage.capabilityAsks.speak || 0) >= 2 }, skillCount: registry.length, knowledgeCount: D.knowledge.length, connectorsOnAccount: [] };
 }
 
-function canListen() { return listener.supported && !!engine.token && permissions.check("browser_speech", "read"); }
+function canListen() { return !isOff && listener.supported && (!!engine.token || window.top === window) && !closedMode() && permissions.check("browser_speech", "read"); }
 function afterSpeaking() {
   followUpUntil = Date.now() + 10000; // a reply right after O.T.T.E.R. speaks needs no wake word
   if (conversationLive && canListen() && !busy && !listener.active) listener.start();
@@ -1184,6 +1222,7 @@ function afterSpeaking() {
 let followUpUntil = 0;
 let pushToTalk = false;
 function heard(t) {
+  noteActivity();
   const needsWake = D.settings.wakeWord && D.settings.autoListen && !pushToTalk;
   const w = parseWake(t, { followUp: !needsWake || Date.now() < followUpUntil });
   pushToTalk = false;
@@ -1283,6 +1322,13 @@ async function handleCommand(cmd, text) {
     return;
   }
   if (cmd.kind === "confirm") return answerLearning(cmd.yes, text);
+  if (cmd.kind === "shutdown") return shutOff("you said so");
+  if (cmd.kind === "done") { collapseHelper(); return addLocalMessages(text, "Okay. I'll stay small until you need me.", { speak: true }); }
+  if (cmd.kind === "screen") {
+    if (!cmd.on) { watcher.stop("you asked me to stop looking"); return addLocalMessages(text, "Stopped looking. Nothing on your screen is captured now.", { speak: true }); }
+    if (watcher.active) return addLocalMessages(text, "I'm already looking. Ask me what to do next, or where something is.", { speak: true });
+    return addLocalMessages(text, "Tap the eye button and pick the screen or window to share. Chrome needs that click; I can't start sharing by voice.", { speak: true });
+  }
   if (cmd.kind === "profile") {
     const mine = D.knowledge.filter((k) => k.tags?.includes("profile") || k.tags?.includes("learned"));
     return addLocalMessages(text, mine.length ? `Here's what I know about you (0 tokens):\n\n${mine.map((k) => `- **${k.title}:** ${k.text}`).join("\n")}\n\nTo correct or forget any of it, open Menu > Abilities & growth.` : "Nothing yet.", { speak: false });
@@ -1367,6 +1413,7 @@ function renderAbilities() {
   const page = h(`<div class="page">
     <div><h2>Abilities and growth</h2><p class="lead">What I can do right now, what I can't and why, and the piece that would unlock it. This updates as you add permissions, connectors or the local server. Recommendations come from counts of what you ask for and where I get stuck, kept on this device. I never read past conversations to make them.</p></div>
     <div class="card"><div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="flex:1;margin:0">Grow O.T.T.E.R.</h3>${engine.kind !== "offline" ? '<button type="button" class="btn" id="askIdeas">Ask Claude for more ideas</button>' : ""}</div><div id="recList" class="findings-list"></div></div>
+    <div class="card"><h3>Verifiable log</h3><div id="ledgerBox"></div></div>
     <div class="card"><h3>What I know about you</h3><p class="hint" style="margin:0">From your setup brief and things you said yes to remembering. It travels with every question so I ask less. Forget anything that's wrong.</p><div id="knowBox" class="findings-list"></div></div>
     <div class="card"><div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="flex:1;margin:0">Morning check</h3><button type="button" class="btn" id="runCheck">Run now (0 tokens)</button></div><div id="verifyBox"></div></div>
     <div class="card"><h3>What I can and can't do</h3>${capabilityReport()}</div>
@@ -1379,6 +1426,7 @@ function renderAbilities() {
     list.append(n);
   }
   if (!recs.length) list.append(h(`<p class="dempty">No recommendations yet. I suggest connectors and skills after I see where I get stuck (${D.usage.turns} conversation turn${D.usage.turns === 1 ? "" : "s"} so far). Nothing is invented to fill this space.</p>`));
+  renderLedgerCard(page.querySelector("#ledgerBox"));
   const kb = page.querySelector("#knowBox");
   for (const k of D.knowledge.filter((x) => x.tags?.includes("profile") || x.tags?.includes("learned"))) {
     const n = h(`<div class="ditem"><div class="row"><b>${esc(k.title)}</b><span class="tag">${k.tags.includes("learned") ? "learned" : "from your brief"}</span><button type="button" class="link-btn danger" style="margin-left:auto">Forget</button></div><span>${esc(k.text)}</span></div>`);
@@ -1468,8 +1516,7 @@ function applyOpenDefaults() {
   const S = D.settings;
   const purpose = "On by default at first launch; turn off in Settings";
   if (service()) approveService();
-  permissions.grant("browser_speech", "read", { purpose });
-  permissions.grant("cloud_voice", "read", { purpose });
+  if (!closedMode()) { permissions.grant("browser_speech", "read", { purpose }); permissions.grant("cloud_voice", "read", { purpose }); }
   permissions.grant("system_volume", "write", { purpose });
   if (engine.kind === "server") permissions.grant("web_research", "read", { purpose });
   savePerms();
@@ -1484,8 +1531,9 @@ function applyOpenDefaults() {
     ":::finding",
     "**On by default** (Menu > Settings turns any of it off)",
     `- Claude answers (${engine.label})`,
-    "- Voice at 20% speaking volume, using the most natural male voice, including online voices (spoken text goes to Microsoft or Google)",
-    `- Listening, always on${listenOk ? "" : " where the browser allows it"}, acting only on “Otter…” (audio goes to the browser maker for transcription)`,
+    `- Voice at 20% speaking volume, using the most natural male voice ${closedMode() ? "installed on this computer (online voices are off in closed mode)" : "(online voices included)"}`,
+    closedMode() ? "- Closed mode: the only outside address is api.anthropic.com, and every call is in the verifiable log" : `- Listening for “Hey Otter”${listenOk ? "" : " where the browser allows it"} (Chrome sends microphone audio to Google for transcription)`,
+    "- Screen coaching when you tap the eye button: a picture goes to Claude only when you ask a question while I'm looking",
     "- Computer volume control, starting at 20%, with your OK on each change",
     engine.kind === "server" ? "- Web research on the deep route" : "",
     "",
@@ -1524,6 +1572,162 @@ async function answerLearning(yes, text) {
   addLocalMessages(text, yes ? "Got it. I'll remember that." : "Okay, I won't keep it.");
 }
 
+// ---------- screen coaching, closed mode, sleep and shut-off ----------
+const watcher = new ScreenWatcher({
+  getWindow: () => pipWindow || window,
+  onState: (on, why) => {
+    ledger.append(on ? "screen.on" : "screen.off", { surface: on ? why : "", reason: on ? "" : why });
+    $("miniLook")?.classList.toggle("on", on);
+    $("miniLook")?.setAttribute("aria-pressed", String(on));
+    $("otterCaption").textContent = on ? "I'm looking. Ask me what's next, or where something is." : "Not looking at your screen.";
+    noteActivity();
+  },
+  onSnapshot: (snap) => ledger.append("screen.snapshot", { kept: "memory only", width: snap.width, height: snap.height, changed: Math.round(snap.changed * 100) / 100 }),
+});
+async function toggleLook() {
+  if (watcher.active) { watcher.stop("you tapped the eye button"); return; }
+  if (!watcher.supported) return showLocalReply(":::limitation\n**Look at your screen**\n- **Why I can't:** this browser or page doesn't allow screen sharing (claude.ai pages and some managed browsers block it).\n- **The missing piece:** O.T.T.E.R. opened from its own file or web address in Chrome or Edge, with screen sharing allowed by your browser's policy.\n- **With that piece, I could:** see the step you're on and circle what you're looking for.\n:::", { speak: false });
+  try { await watcher.start(); }
+  catch (e) { toast(/Permission|NotAllowed/i.test(e.name + e.message) ? "Screen sharing was cancelled or isn't allowed on this computer." : "Couldn't start screen sharing: " + e.message, 5000); }
+}
+
+// Pictures are kept in memory for this session only, so circles can be drawn on them.
+const snapshots = new Map();
+function keepSnapshot(snap) {
+  const id = newId("snap");
+  snapshots.set(id, snap.url);
+  if (snapshots.size > 12) snapshots.delete(snapshots.keys().next().value);
+  return id;
+}
+function snapshotNode(m) {
+  const url = snapshots.get(m.snapshotId);
+  const pts = m.pointers || [];
+  const labels = pts.map((p, i) => `<li><b>${i + 1}</b> ${esc(p.label)}</li>`).join("");
+  if (!url) return h(`<div class="snap gone"><span class="hint">Screen picture not kept (pictures are never saved).</span>${labels ? `<ol class="snap-labels">${labels}</ol>` : ""}</div>`);
+  const marks = pts.map((p, i) => `<g><circle cx="${p.x * 100}" cy="${p.y * 100}" r="7" class="snap-ring"/><circle cx="${p.x * 100}" cy="${p.y * 100}" r="1.8" class="snap-dot"/><text x="${Math.min(96, p.x * 100 + 5)}" y="${Math.max(5, p.y * 100 - 4)}" class="snap-num">${i + 1}</text></g>`).join("");
+  return h(`<figure class="snap"><div class="snap-frame"><img src="${url}" alt="Snapshot of your screen"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${marks}</svg></div>${labels ? `<ol class="snap-labels">${labels}</ol>` : ""}<figcaption class="hint">Circles are drawn on O.T.T.E.R.'s copy of the picture. Nothing on your screen was clicked.</figcaption></figure>`);
+}
+
+// Checklists: "- [ ] step" items become checkboxes; ticking them all closes the panel.
+function wireChecklist(bubble, m) {
+  const boxes = [...bubble.querySelectorAll('input[type="checkbox"][data-task]')];
+  if (!boxes.length) return;
+  m.checks ||= {};
+  boxes.forEach((b) => {
+    b.checked = !!m.checks[b.dataset.task];
+    b.closest("li").classList.toggle("done", b.checked);
+    b.onchange = () => {
+      m.checks[b.dataset.task] = b.checked;
+      b.closest("li").classList.toggle("done", b.checked);
+      store.save();
+      noteActivity();
+      if (boxes.every((x) => x.checked)) {
+        ledger.append("checklist.done", { steps: boxes.length });
+        $("otterCaption").textContent = "All steps done. Nice work.";
+        if (D.settings.voiceOn) speaker.speak("That's every step. Nice work.", { mode: "full" });
+        setTimeout(() => collapseHelper(), 2500);
+      }
+    };
+  });
+}
+
+// The helper grows to show an answer, list or question, then shrinks back. Chrome lets a page
+// resize its floating window only right after a click, so an expansion that follows a spoken
+// request fills the small window and scrolls instead.
+function tryResize(w, h) { try { (pipWindow || window).resizeTo(w, h); } catch {} }
+function expandHelper() { if (viewMode !== "mini") return; toggleMiniChat(true); tryResize(440, 640); }
+function collapseHelper() { if (viewMode !== "mini") return; toggleMiniChat(false); tryResize(320, 420); }
+
+// Awake: while looking, O.T.T.E.R. falls asleep (stops capturing) after a quiet spell.
+let lastActivity = Date.now();
+function noteActivity() { lastActivity = Date.now(); }
+setInterval(() => {
+  const mins = +D.settings.awakeMinutes || 10;
+  if (watcher.active && Date.now() - lastActivity > mins * 60000) {
+    watcher.stop(`asleep after ${mins} quiet minutes`);
+    $("otterCaption").textContent = "Fell asleep. I stopped looking at your screen.";
+    collapseHelper();
+  }
+}, 30000);
+
+// One switch turns everything off: microphone, voice, screen capture, timers, floating window.
+let isOff = false;
+function shutOff(reason) {
+  isOff = true;
+  conversationLive = false;
+  listener.stop();
+  speaker.stop();
+  watcher.stop("shut off");
+  snapshots.clear();
+  busy?.abort();
+  if (pipWindow) pipWindow.close();
+  ledger.append("session.off", { reason });
+  setActivity("idle");
+  setMiniHint();
+  const o = h(`<div id="offScreen" class="off-screen" role="dialog" aria-label="O.T.T.E.R. is off"><div class="ob-otter" aria-hidden="true">${otterMini()}</div><h2>Otter is off.</h2><p>Not listening, not looking, not sending anything. Close this window to end it completely, or start again.</p><button type="button" class="btn btn-primary">Start again</button></div>`);
+  o.querySelector("button").onclick = () => { o.remove(); isOff = false; startOtter(); };
+  DOC.body.append(o);
+}
+
+function closedMode() { return D.settings.closedMode !== false; }
+function setClosedMode(on, why) {
+  D.settings.closedMode = on;
+  if (on) { permissions.revoke("browser_speech"); permissions.revoke("cloud_voice"); stopConversation(); }
+  else permissions.grant("browser_speech", "read", { purpose: "Hey Otter listening (Chrome speech service)" });
+  savePerms(); store.save();
+  ledger.append(on ? "closed_mode.on" : "closed_mode.off", { exception: on ? "" : why });
+  renderEngine(); setMiniHint();
+}
+
+// Start: browsers need one click before a page may float, listen or speak.
+function startOtter() {
+  ledger.append("session.start", { engine: engine.kind, closedMode: closedMode(), page: location.protocol === "file:" ? "local file" : location.host });
+  if (canFloat() && !pipWindow) floatWindow();
+  if (D.settings.autoListen && canListen()) startConversation();
+  setMiniHint();
+  noteActivity();
+}
+function showStartCard() {
+  if ($("startCard")) return;
+  const needsKey = engine.needsKey;
+  const c = h(`<div id="startCard" class="start-card" role="dialog" aria-labelledby="startTitle">
+    <div class="ob-otter" aria-hidden="true">${otterMini()}</div>
+    <h2 id="startTitle">Hi Arnaud. Ready when you are.</h2>
+    ${needsKey ? `<label class="field"><span>Anthropic API key</span><input id="startKey" type="password" placeholder="sk-ant-..." autocomplete="off"><small>Kept only in this browser. Sent only to api.anthropic.com. Skip it to use the built-in guides only.</small></label>` : ""}
+    <label class="switch"><input id="startHey" type="checkbox" ${!closedMode() ? "checked" : ""} ${listener.supported ? "" : "disabled"}><span>Listen for “Hey Otter”. Chrome sends what the microphone hears to Google to turn it into text, so this is the one exception to closed mode.</span></label>
+    <button type="button" class="btn btn-primary start-go">Start Otter</button>
+    <p class="hint">Opens a small window that floats on top, usually in the bottom-right corner (Chrome decides where it first appears). Close it or say “Hey Otter, shut down” to turn everything off.</p>
+  </div>`);
+  c.querySelector(".start-go").onclick = async () => {
+    const k = c.querySelector("#startKey")?.value.trim();
+    if (k) { writeKey(k); engine = await detectEngine(); approveService(); ledger.append("engine.connected", { engine: engine.kind, host: "api.anthropic.com" }); }
+    const hey = c.querySelector("#startHey").checked;
+    if (hey !== !closedMode()) setClosedMode(!hey, "Hey Otter listening (Chrome speech service, Google)");
+    c.remove();
+    renderEngine();
+    startOtter();
+  };
+  DOC.body.append(c);
+}
+
+function renderLedgerCard(box) {
+  const out = ledger.entries.filter((e) => e.type === "network.out");
+  const hosts = [...new Set(out.map((e) => e.detail.host))];
+  const blocked = ledger.entries.filter((e) => e.type === "network.blocked").length;
+  box.innerHTML = `<p style="margin:0">${ledger.entries.length} entries. Outside addresses contacted: <b>${hosts.length ? esc(hosts.join(", ")) : "none yet"}</b>${hosts.every((x) => ALLOWED_HOSTS.includes(x)) ? " (only the allowed one)" : ""}. Blocked attempts: ${blocked}. Mode: <b>${closedMode() ? "closed" : "closed except Chrome speech (Google)"}</b>.</p>
+    <p class="hint" style="margin:0">Latest fingerprint <span class="mono">${esc(ledger.head.slice(0, 20))}</span>. Each entry's fingerprint covers the one before it, so any edit or deletion breaks the chain.</p>
+    <div class="toolbar"><button type="button" class="btn" id="lgVerify">Verify the log</button><button type="button" class="btn" id="lgCopy">Copy log (JSON)</button><a class="btn" id="lgDl" download="otter-ledger.json">Download log</a></div>
+    <div id="lgResult"></div>
+    <div class="audit">${ledger.entries.slice(-80).reverse().map((e) => `<div>#${e.seq} ${esc(new Date(e.ts).toLocaleString())} · ${esc(e.type)} ${esc(Object.entries(e.detail || {}).map(([k, v]) => `${k}=${v}`).join(" "))}</div>`).join("")}</div>`;
+  box.querySelector("#lgVerify").onclick = async () => {
+    const r = await verifyChain(ledger.entries);
+    box.querySelector("#lgResult").innerHTML = r.ok ? `<div class="notice info">Verified: all ${r.count} entries are intact and in order.</div>` : `<div class="notice bad">Broken at entry #${r.brokenAt}: ${esc(r.reason)}.</div>`;
+    ledger.append("ledger.verified", { ok: r.ok, count: r.count });
+  };
+  box.querySelector("#lgCopy").onclick = () => copyText(ledger.export());
+  try { box.querySelector("#lgDl").href = URL.createObjectURL(new Blob([ledger.export()], { type: "application/json" })); } catch {}
+}
+
 // ---------- prefs & wiring ----------
 function applyPrefs() {
   const S = D.settings;
@@ -1558,6 +1762,8 @@ function wire() {
   $("minBtn").onclick = () => setViewMode("mini");
   $("miniChat").onclick = () => toggleMiniChat();
   $("miniFloat").onclick = () => floatWindow();
+  $("miniLook").onclick = () => toggleLook();
+  $("miniOff").onclick = () => shutOff("you pressed the power button");
   $("miniMic").onclick = () => { if (conversationLive) { stopConversation(); setMiniHint(); } else { pushToTalk = true; startConversation(); } };
   $("newChat").onclick = newConversation;
   $("searchChats").oninput = () => { historyLimit = PAGE; renderHistory(); };
@@ -1667,7 +1873,9 @@ async function boot() {
   if (seedProfile(D.knowledge)) store.save();
   if (!D.settings.openDefaultsApplied) applyOpenDefaults();
   launchChecks();
-  if (D.settings.autoListen && canListen()) startConversation();
+  ledger.append("page.open", { engine: engine.kind, closedMode: closedMode() });
+  if (!engine.token && engine.kind !== "artifact" && window.top === window) showStartCard();
+  else if (D.settings.autoListen && canListen()) startConversation();
   setMiniHint();
 }
 boot();
