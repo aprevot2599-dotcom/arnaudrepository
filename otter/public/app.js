@@ -849,13 +849,18 @@ function renderSettings() {
       ${screenOnHold() ? `<p style="margin:0"><b>On hold</b> until BMCC gives full permission. The eye button is hidden and no screen picture can be sent.</p>
       <div class="grid-2" style="gap:8px"><label class="field"><span>Approved by (BMCC office or person)</span><input id="scrApprover" type="text"></label><label class="field"><span>Date of written approval</span><input id="scrDate" type="date"></label></div>
       <label class="switch"><input id="scrOk" type="checkbox"><span>BMCC has approved, in writing, sending screen pictures of Microsoft 365 apps to Claude.</span></label>
-      <div><button type="button" class="btn" id="scrRelease" disabled>Release the hold</button></div>` : `<p style="margin:0"><b>Released</b> on ${esc(S.screenApprovedOn || "")}, approved by ${esc(S.screenApprover || "")}. Recorded in the log.</p><div><button type="button" class="btn btn-bad" id="scrHold">Put back on hold</button></div>`}
+      <div><button type="button" class="btn" id="scrRelease" disabled>Release the hold</button></div>
+      <h3 style="margin-top:8px">Or: personal screens only, starting now</h3>
+      <p class="hint" style="margin:0">For your own Chrome tabs and accounts (personal Gmail, public websites, practice files). Not Outlook, Excel, Forms, Power Automate or anything else signed in with BMCC.</p>
+      <label class="switch"><input id="scrPersonalOk" type="checkbox"><span>I'll only share screens with no BMCC content and no student or personnel information, and I'll stop sharing before opening a BMCC page.</span></label>
+      <div><button type="button" class="btn" id="scrPersonal" disabled>Allow for personal screens</button></div>` : S.screenScope === "personal" ? `<p style="margin:0"><b>Allowed for personal, non-BMCC screens only</b> since ${esc(S.screenApprovedOn || "")}. BMCC screens still wait for BMCC's permission. Recorded in the log.</p><div><button type="button" class="btn btn-bad" id="scrHold">Put back on hold</button></div>` : `<p style="margin:0"><b>Released</b> on ${esc(S.screenApprovedOn || "")}, approved by ${esc(S.screenApprover || "")}. Recorded in the log.</p><div><button type="button" class="btn btn-bad" id="scrHold">Put back on hold</button></div>`}
     </div>
     ${window.top === window && /^(file|https?):$/.test(location.protocol) ? `<div class="card"><h3>Open with Chrome</h3>
       <p style="margin:0">To have O.T.T.E.R. open every time Chrome starts, add this address to Chrome's startup pages:</p>
       <div class="toolbar"><input id="startAddr" type="text" readonly class="mono" style="flex:1;min-width:0" value="${esc(location.href.split(/[?#]/)[0])}"><button type="button" class="btn" id="startAddrCopy">Copy</button></div>
       <ol class="hint" style="margin:0;padding-left:1.2em"><li>Chrome menu (⋮) > Settings > On startup.</li><li>Choose <b>Open a specific page or set of pages</b> > <b>Add a new page</b>, paste, <b>Add</b>.</li><li>Next time Chrome opens, click <b>Start Otter</b> once and it floats. Chrome requires that one click.</li></ol>
       <p class="hint" style="margin:0">Edge: Settings > Start, home, and new tabs > Open these pages. If you move or rename the file, update the address.</p>
+      ${location.protocol === "https:" ? `<p class="hint" style="margin:0"><b>Other computers:</b> this web address works anywhere. Bookmark it and the bookmark follows your Chrome account; pin the tab on each computer (pins don't sync), and type your API key once per computer (it never syncs).</p>` : ""}
       ${location.protocol === "file:" ? `<p class="hint" style="margin:0"><b>Other computers:</b> this address points to a file on this computer only. Signing in to Chrome on another computer syncs bookmarks, not pinned tabs or this file, so each computer needs its own copy (and its own API key, which never syncs).</p>` : ""}</div>` : ""}
     <div class="card"><h3>Permissions</h3><p class="hint" style="margin:0">Each system is separate: Outlook access says nothing about SharePoint or Banner, and read never implies write. A signed-in browser does not count. Protected systems need a stated purpose. Note that no integration for these systems exists yet, so a grant today only lets plans and approvals reference them.</p><div id="permList"></div></div>
     <div class="grid-2">
@@ -883,9 +888,11 @@ function renderSettings() {
   if (page.querySelector("#scrRelease")) {
     const ready = () => ($$("#scrRelease").disabled = !($$("#scrOk").checked && $$("#scrApprover").value.trim() && $$("#scrDate").value));
     ["#scrOk", "#scrApprover", "#scrDate"].forEach((sel) => ($$(sel).oninput = $$(sel).onchange = ready));
-    $$("#scrRelease").onclick = () => { S.screenHold = false; S.screenApprover = $$("#scrApprover").value.trim(); S.screenApprovedOn = $$("#scrDate").value; store.save(); ledger.append("screen.hold.released", { approver: S.screenApprover, approvedOn: S.screenApprovedOn }); setMiniHint(); renderSettings(); };
+    $$("#scrPersonalOk").onchange = (e) => ($$("#scrPersonal").disabled = !e.target.checked);
+    $$("#scrPersonal").onclick = () => { S.screenHold = false; S.screenScope = "personal"; S.screenApprover = "you, personal screens only"; S.screenApprovedOn = new Date().toISOString().slice(0, 10); store.save(); ledger.append("screen.hold.released", { scope: "personal, non-BMCC screens only", approver: "you" }); setMiniHint(); renderSettings(); };
+    $$("#scrRelease").onclick = () => { S.screenHold = false; S.screenScope = "bmcc"; S.screenApprover = $$("#scrApprover").value.trim(); S.screenApprovedOn = $$("#scrDate").value; store.save(); ledger.append("screen.hold.released", { approver: S.screenApprover, approvedOn: S.screenApprovedOn }); setMiniHint(); renderSettings(); };
   }
-  if (page.querySelector("#scrHold")) $$("#scrHold").onclick = () => { S.screenHold = true; watcher.stop("put back on hold"); store.save(); ledger.append("screen.hold.on", {}); setMiniHint(); renderSettings(); };
+  if (page.querySelector("#scrHold")) $$("#scrHold").onclick = () => { S.screenHold = true; S.screenScope = null; watcher.stop("put back on hold"); store.save(); ledger.append("screen.hold.on", {}); setMiniHint(); renderSettings(); };
   $$("#sClosed").onchange = (e) => { setClosedMode(e.target.checked, "turned off in Settings"); renderSettings(); };
   $$("#sAwake").onchange = (e) => { S.awakeMinutes = +e.target.value; store.save(); };
   if (page.querySelector("#sKeySave")) {
@@ -1229,7 +1236,7 @@ function voiceEnv() {
 function capEnv() {
   return {
     engineKind: engine.kind, serverRunning: !!engine.token, serviceApproved: serviceApproved(), webResearch: permissions.check("web_research", "read"),
-    speech: voiceEnv(), systemVolume: engine.cap?.systemVolume || {}, floatSupported: canFloat(), topLevel: window.top === window, closedMode: closedMode(), screenHold: screenOnHold(), systemVolumePermitted: permissions.check("system_volume", "write"), ferpaAttested: D.settings.ferpaAttested,
+    speech: voiceEnv(), systemVolume: engine.cap?.systemVolume || {}, floatSupported: canFloat(), topLevel: window.top === window, closedMode: closedMode(), screenHold: screenOnHold(), screenScope: D.settings.screenScope, systemVolumePermitted: permissions.check("system_volume", "write"), ferpaAttested: D.settings.ferpaAttested,
   };
 }
 const capability = (id) => assessCapabilities(capEnv()).find((c) => c.id === id);
@@ -1672,7 +1679,8 @@ const watcher = new ScreenWatcher({
     ledger.append(on ? "screen.on" : "screen.off", { surface: on ? why : "", reason: on ? "" : why });
     $("miniLook")?.classList.toggle("on", on);
     $("miniLook")?.setAttribute("aria-pressed", String(on));
-    $("otterCaption").textContent = on ? "I'm looking. Ask me what's next, or where something is." : "Not looking at your screen.";
+    $("otterCaption").textContent = on ? (D.settings.screenScope === "personal" ? "I'm looking (personal screens only). Tap the bulb for suggestions, or ask me anything." : "I'm looking. Tap the bulb for suggestions, or ask what's next.") : "Not looking at your screen.";
+    if ($("miniSuggest")) $("miniSuggest").hidden = !on;
     noteActivity();
   },
   onSnapshot: (snap) => ledger.append("screen.snapshot", { kept: "memory only", width: snap.width, height: snap.height, changed: Math.round(snap.changed * 100) / 100 }),
@@ -1907,6 +1915,7 @@ function wire() {
   $("miniChat").onclick = () => toggleMiniChat();
   $("miniFloat").onclick = () => floatWindow();
   $("miniLook").onclick = () => toggleLook();
+  $("miniSuggest").onclick = () => { if (watcher.active) send("Look at my screen and recommend what I could do better, faster or more safely here. Be specific to what's visible: name the app and the step, point at anything I should look at, and mention a Power Automate, Forms or Excel shortcut if one fits. Advise only."); };
   $("miniOff").onclick = () => shutOff("you pressed the power button");
   $("miniMic").onclick = () => micPressed();
   $("newChat").onclick = newConversation;

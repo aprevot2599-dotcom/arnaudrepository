@@ -21,15 +21,26 @@ One file, `otter-web.html`, opened in Chrome or Edge. No Node.js, no server, no 
 7. **Make it open with Chrome (optional).** In O.T.T.E.R., Menu > Settings > **Open with Chrome** shows the file's exact address with a Copy button. In Chrome: ⋮ > Settings > On startup > **Open a specific page or set of pages** > **Add a new page**, paste, Add. (Edge: Settings > Start, home, and new tabs > Open these pages.) From then on O.T.T.E.R. opens with Chrome; click **Start Otter** once and it floats. Chrome won't open a floating window without that click, and no page can get around it. Note that this setting replaces "Continue where you left off", so Chrome stops reopening yesterday's tabs. If you'd rather keep those, leave the setting alone, open O.T.T.E.R. once, right-click its tab > **Pin**, and choose "Continue where you left off": the pinned tab comes back each time. If you move or rename the file, update the address. **On other computers:** signing in to your Chrome account syncs bookmarks but not pinned tabs, and a file address only works on the computer that holds the file. Each computer needs its own copy of the file, its own pin, and the API key typed in once (the key never syncs, on purpose).
 8. **Turn it off:** the red power button, "Hey Otter, shut down", or just close the window. Everything stops: microphone, screen capture, voice, timers. Closing the browser tab ends it completely.
 
+## The web-address version (pin it once, open it anywhere)
+
+The same page, without your skill list, is served at **https://aprevot2599-dotcom.github.io/arnaudrepository/** once GitHub Pages is switched on (one-time, below). It behaves exactly like the file: same closed policy, same log, the API key stays in that browser only. Advantages over the file: Chrome remembers the microphone permission, the bookmark follows your Chrome account to every computer, and there's nothing to copy around.
+
+- **Switch on GitHub Pages (once):** github.com/aprevot2599-dotcom/arnaudrepository > Settings > Pages > Build and deployment > Source: **Deploy from a branch** > Branch: `claude/trusting-fermi-2l0f6k`, folder `/docs` > Save. The address works a minute or two later. After the work is merged, switch the branch to `main`.
+- **Pin it:** open the address in Chrome, right-click the tab > **Pin**, and set Settings > On startup > **Continue where you left off**. Or add the address under "Open a specific page or set of pages".
+- **Updating it:** `npm run build:site` rebuilds `docs/index.html`; pushing it updates the address.
+- The repository is public, so the page is too. It holds no keys, no conversations and no skill list. Anyone who opens it gets an empty otter that needs their own API key.
+
 ## An advisor, not an actor
 
 O.T.T.E.R. only sees what you give it (pasted emails, documents, your tasks) and makes recommendations on top of it. It never logs into, reads from, or changes anything on BMCC systems. This is enforced in the code, not just promised: at startup a check (`assertAdvisorOnly`) refuses to run if any action O.T.T.E.R. can carry out would touch an outside system. The only things it can do are on its own side: remember a note, add a task, change the volume, and each needs your OK.
 
 The **spotter** is the advisor part: it looks over what you've already given it, every 30 minutes, after each answer and after you add an email, and flags what you may not have spotted yet, each with the quote it came from. It runs on your computer for 0 tokens and acts on none of it.
 
-## Screen coaching is on hold
+## Screen coaching: on hold for BMCC, available for personal screens
 
-Until BMCC gives full permission, O.T.T.E.R. doesn't look at your screen at all: the eye button is hidden, nothing is captured, and no picture is sent. Asking it to look gets an explanation instead. When BMCC approves, go to Menu > Settings > Screen coaching, enter who approved and the date, tick the box and press **Release the hold**. The log records that release with the approver's name. **Put back on hold** reverses it, also logged.
+Out of the box, O.T.T.E.R. doesn't look at your screen at all: the eye button is hidden, nothing is captured, and no picture is sent. Asking it to look gets an explanation instead.
+
+**Personal screens, now:** Menu > Settings > Screen coaching > tick the promise (no BMCC content, no student or personnel information) > **Allow for personal screens**. The log records it as personal only. Then tap the eye, choose a **Chrome tab** (or window) in Chrome's picker, and either ask a question or tap the **bulb** for recommendations on what's visible. Claude is told that if a picture looks like a BMCC system or student data, it must not describe it and should tell you to stop sharing. When BMCC approves, go to Menu > Settings > Screen coaching, enter who approved and the date, tick the box and press **Release the hold**. The log records that release with the approver's name. **Put back on hold** reverses it, also logged.
 
 ## What "closed" means here, and how to check it
 

@@ -72,3 +72,7 @@ Everything O.T.T.E.R. needs from you, in the order I'd make the calls. Each row 
 | 32 | Release screen coaching | Release after BMCC's written OK / keep on hold | Keep on hold until IT answers 28 in writing; record who approved and when in Settings | On hold, eye hidden |
 | 33 | How often the spotter looks | Every 30 minutes plus after answers and new emails (current) / only when asked | Keep it; it costs 0 tokens and never acts | Every 30 minutes |
 | 34 | Microphone press in closed mode | Allowed and logged (current) / disabled | Allowed and logged; it's the only voice route that doesn't listen all the time | Allowed, logged |
+| 35 | A Windows .exe version | Build after IT approves installed software / never | After IT approves; until then the HTML covers most of it | HTML only |
+| 36 | Host the web-address version on GitHub Pages | Switch on Pages (public repo, page holds no data) / pay for a private repo with Pages / keep the file | Switch it on; the page carries no keys, conversations or skill list | Not switched on |
+| 37 | Screen reading for personal, non-BMCC screens | Allow now (logged, Claude told to flag BMCC content) / wait for BMCC | Allow on personal tabs if you want coaching now; keep BMCC screens on hold | On hold |
+

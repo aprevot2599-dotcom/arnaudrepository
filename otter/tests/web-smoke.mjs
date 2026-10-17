@@ -141,6 +141,7 @@ try {
   await page.click("#miniLook");
   await page.waitForFunction(() => document.getElementById("miniLook").classList.contains("on"));
   check(true, "eye button starts looking (after Chrome's own screen picker)");
+  check(await page.locator("#miniSuggest").isVisible(), "while looking, a bulb button offers suggestions for this screen");
   const before = calls.length;
   await page.fill("#input", "where is the save button?");
   await page.keyboard.press("Enter");
@@ -209,6 +210,37 @@ try {
     else check(/microphone is blocked/.test(txt) && /address bar/.test(txt), "a blocked microphone is named, with how to allow it");
     if (mode === "works") check(await mp.evaluate(() => { const l = JSON.parse(localStorage.getItem("otter.v1")).ledger; return l.some((e) => e.type === "mic.test" && e.detail.result === "pass,pass,pass,pass") && !JSON.stringify(l).includes("testing"); }), "the log records the test result but not the words heard");
     await mp.close();
+  }
+  // 4) Personal screens only: allowed now, BMCC screens still on hold, bulb asks for suggestions.
+  {
+    const pp = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+    const sent = [];
+    await pp.addInitScript(() => {
+      delete window.documentPictureInPicture;
+      localStorage.setItem("otter.apikey", "sk-ant-test");
+      navigator.mediaDevices.getDisplayMedia = async () => { const c = document.createElement("canvas"); c.width = 800; c.height = 500; const g = c.getContext("2d"); setInterval(() => { g.fillStyle = "#eee"; g.fillRect(0, 0, 800, 500); }, 200); return c.captureStream(5); };
+    });
+    await pp.route("https://api.anthropic.com/**", async (route) => {
+      sent.push(JSON.parse(route.request().postData()));
+      await route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify({ stop_reason: "end_turn", usage: { input_tokens: 3000, output_tokens: 200 }, content: [{ type: "text", text: "This is a Chrome tab. Suggestion: bookmark it." }] }) });
+    });
+    await pp.goto(file);
+    await pp.waitForSelector("#startCard"); await pp.click(".start-go");
+    await pp.click("#miniMax"); await pp.click("#openSide"); await pp.click('[data-view="settings"]');
+    check(await pp.locator("#scrPersonal").isDisabled(), "personal screen sharing needs your promise first");
+    await pp.check("#scrPersonalOk"); await pp.click("#scrPersonal");
+    await pp.waitForTimeout(400);
+    check(await pp.evaluate(() => JSON.parse(localStorage.getItem("otter.v1")).ledger.some((e) => e.type === "screen.hold.released" && /personal/.test(e.detail.scope))), "allowing personal screens is recorded in the log as personal only");
+    check(/personal, non-BMCC screens only/.test(await pp.locator("#view-settings").innerText()), "Settings says it's for personal, non-BMCC screens only");
+    await pp.click("#minBtn");
+    await pp.click("#miniLook");
+    await pp.waitForFunction(() => document.getElementById("miniLook").classList.contains("on"));
+    await pp.click("#miniSuggest");
+    await pp.waitForFunction(() => /bookmark it/.test(document.getElementById("messages").innerText), null, { timeout: 15000 });
+    const body = JSON.stringify(sent.at(-1) || {});
+    check(body.includes('"type":"image"') && /recommend what I could do better/.test(body), "the bulb sends one snapshot and asks for recommendations");
+    check(/personal, non-BMCC screens only/.test(body) && /stopping sharing/.test(body), "Claude is told to flag BMCC content and not describe it");
+    await pp.close();
   }
 } finally {
   await browser.close();

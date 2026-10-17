@@ -35,7 +35,9 @@ fs.writeFileSync(out, html);
 // Closed, no-install version: one file you open in Chrome. No web fonts, no outside scripts,
 // and a Content Security Policy that lets the page talk to api.anthropic.com and nothing else.
 // Pass --no-skills to leave your skill list out (for publishing the file anywhere public).
-const withSkills = !process.argv.includes("--no-skills");
+// Pass --site to build the public copy into ../docs/index.html for GitHub Pages (never with skills).
+const site = process.argv.includes("--site");
+const withSkills = !process.argv.includes("--no-skills") && !site;
 const regScript = `globalThis.OTTER_SKILLS = ${JSON.stringify({ generatedAt: registry.generatedAt, skills: withSkills ? registry.skills : [] }).replace(/</g, "\\u003c")};`;
 const appScript = js + "\n";
 const hash = (t) => "'sha256-" + crypto.createHash("sha256").update(t, "utf8").digest("base64") + "'";
@@ -49,6 +51,14 @@ const web = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta 
 if (/fonts\.googleapis|https?:\/\/(?!api\.anthropic\.com)[a-z0-9.-]+\/[^"\s]*\.(js|css)/i.test(web.replace(/<script type="module">[\s\S]*<\/script>/, ""))) throw new Error("otter-web.html would load something from outside");
 const webOut = path.join(ROOT, "dist", withSkills ? "otter-web.html" : "otter-web-public.html");
 fs.writeFileSync(webOut, web);
+if (site) {
+  const docs = path.join(ROOT, "..", "docs");
+  fs.mkdirSync(docs, { recursive: true });
+  if (/OTTER_SKILLS = \{[^;]*"skills":\[\{/.test(web)) throw new Error("the public site must not carry the skill list");
+  fs.writeFileSync(path.join(docs, "index.html"), web);
+  fs.writeFileSync(path.join(docs, ".nojekyll"), "");
+  console.log("Wrote ../docs/index.html (public, no skill list) for GitHub Pages");
+}
 
 // Syntax check of the bundled script (duplicate top-level names fail here)
 const tmp = path.join(ROOT, "dist", ".bundle-check.mjs");
