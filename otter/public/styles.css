@@ -568,3 +568,6 @@ li.task.done span { text-decoration: line-through; color: var(--muted); }
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
 .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+.mic-steps { list-style: none; padding: 0; margin: 4px 0; font-size: 13.5px; display: grid; gap: 3px; }
+.mic-steps li.ok { color: var(--ok); }
+.mic-steps li.bad { color: var(--bad); }

@@ -186,6 +186,30 @@ try {
   check(offTypes.includes("session.off") && offTypes.includes("screen.off"), "shut off is recorded in the log");
   await page.screenshot({ path: path.join(out, "w3-off.png") });
   check(errors.length === 0, "no console errors" + (errors.length ? ": " + errors.join(" | ") : ""));
+
+  // 3) The microphone test: a fake microphone playing a tone and a fake speech service.
+  for (const mode of ["works", "blocked"]) {
+    const mp = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+    await mp.addInitScript((mode) => {
+      delete window.documentPictureInPicture;
+      localStorage.setItem("otter.apikey", "sk-ant-test");
+      navigator.mediaDevices.getUserMedia = async () => {
+        if (mode === "blocked") throw Object.assign(new Error("denied"), { name: "NotAllowedError" });
+        const ctx = new AudioContext(); const o = ctx.createOscillator(); const d = ctx.createMediaStreamDestination(); o.connect(d); o.start(); return d.stream;
+      };
+      window.SpeechRecognition = window.webkitSpeechRecognition = class { start() { setTimeout(() => { this.onresult?.({ results: [[{ transcript: "hey otter testing" }]] }); this.onend?.(); }, 100); } stop() {} abort() {} };
+    }, mode);
+    await mp.goto(file);
+    await mp.waitForSelector("#startCard"); await mp.click(".start-go");
+    await mp.click("#miniMax"); await mp.click("#openSide"); await mp.click('[data-view="settings"]');
+    await mp.click("#micTest");
+    await mp.waitForSelector("#micTestOut .notice", { timeout: 10000 });
+    const txt = await mp.locator("#micTestOut").innerText();
+    if (mode === "works") check(/Heard: .hey otter testing/.test(txt) && /recognised .Hey Otter/.test(txt) && /Everything works/.test(txt), "the microphone test walks each step and repeats back what it heard");
+    else check(/microphone is blocked/.test(txt) && /address bar/.test(txt), "a blocked microphone is named, with how to allow it");
+    if (mode === "works") check(await mp.evaluate(() => { const l = JSON.parse(localStorage.getItem("otter.v1")).ledger; return l.some((e) => e.type === "mic.test" && e.detail.result === "pass,pass,pass,pass") && !JSON.stringify(l).includes("testing"); }), "the log records the test result but not the words heard");
+    await mp.close();
+  }
 } finally {
   await browser.close();
 }

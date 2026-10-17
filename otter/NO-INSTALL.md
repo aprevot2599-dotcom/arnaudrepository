@@ -49,6 +49,8 @@ Chrome turns speech into text by sending microphone audio to Google's servers, o
 
 Speaking answers out loud uses only voices installed on your computer while closed mode is on.
 
+**If it doesn't hear you:** Menu > Settings > Voice > **Test my microphone**. It checks, in order, that the browser can turn speech into text, that the microphone is allowed, that sound is coming in, and that the speech service answers. Then it repeats back what it heard, or names the step that failed and how to fix it. Nothing from the test goes to Claude, and the log records only pass or fail. The claude.ai link can never hear you; use the file.
+
 ## Before you use it on BMCC work
 
 - **Screen pictures are content.** A snapshot of Outlook, Excel, Forms or Power Automate sent to Claude is BMCC Microsoft 365 content going to Claude, which is exactly what BMCC hasn't approved yet. That's why screen coaching ships on hold. After release, O.T.T.E.R. sends a picture only when you ask a question while the eye is on, and logs each one, but it can't tell what's on the picture before it goes.

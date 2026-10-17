@@ -841,6 +841,7 @@ function renderSettings() {
         <label class="switch"><input id="sAuto" type="checkbox" ${S.autoListen ? "checked" : ""}><span>Always listen while O.T.T.E.R. is open</span></label>
         <label class="switch"><input id="sWake" type="checkbox" ${S.wakeWord ? "checked" : ""}><span>Only act when I say "Otter" first (saves tokens, ignores side conversations)</span></label>
         <label class="switch"><input id="sListen" type="checkbox" ${permissions.check("browser_speech", "read") ? "checked" : ""}><span>Allow listening (audio may go to ${esc(recognitionVendor())} for transcription)</span></label>
+        <div class="toolbar"><button type="button" class="btn" id="micTest">Test my microphone</button></div><div id="micTestOut" aria-live="polite"></div>
         <label class="switch"><input id="sSysVol" type="checkbox" ${permissions.check("system_volume", "write") ? "checked" : ""}><span>Allow changing this computer's volume (each change approved)</span></label>
         <label class="field"><span>Computer volume at launch</span><select id="sLaunch"><option value="off" ${!S.systemVolumeAtLaunch ? "selected" : ""}>Don't ask</option>${[10, 20, 30, 40, 50].map((v) => `<option value="${v}" ${S.systemVolumeAtLaunch && +S.launchVolume === v ? "selected" : ""}>Ask to set ${v}%</option>`).join("")}</select></label>
       </div></div>
@@ -924,6 +925,7 @@ function renderSettings() {
   const permToggle = (sel, sys, scope, purpose) => ($$(sel).onchange = (e) => { e.target.checked ? permissions.grant(sys, scope, { purpose }) : permissions.revoke(sys); savePerms(); renderSettings(); renderVoicePop(); });
   permToggle("#sCloud", "cloud_voice", "read", "Natural voice, enabled in Settings");
   permToggle("#sListen", "browser_speech", "read", "Conversation mode, enabled in Settings");
+  $$("#micTest").onclick = () => micTest($$("#micTestOut"), $$("#micTest"));
   permToggle("#sSysVol", "system_volume", "write", "Volume changes, each approved");
   $$("#sAuto").onchange = (e) => { S.autoListen = e.target.checked; store.save(); };
   $$("#sWake").onchange = (e) => { S.wakeWord = e.target.checked; store.save(); };
@@ -1204,6 +1206,7 @@ const listener = new Listener({
     if (code === "idle") banner("I paused listening after a long silence. Click the microphone to talk again.");
     else if (code === "not-allowed" || code === "service-not-allowed") banner("The browser blocked the microphone. Allow it in the address bar's site settings, then click the microphone.");
     else if (code === "network") banner("Listening needs the browser's online speech service, and it couldn't be reached.");
+    else if (code === "audio-capture") banner("No working microphone found. Menu > Settings > Test my microphone will show what's wrong.");
     else toast("Listening stopped (" + code + ").");
   },
 });
@@ -1244,6 +1247,61 @@ function afterSpeaking() {
 // ("Otter, ...") or said right after it spoke is acted on, so side conversations cost nothing.
 let followUpUntil = 0;
 let pushToTalk = false;
+// Checks each link between your voice and O.T.T.E.R. in order (browser support, microphone
+// permission, sound level, the speech service) and names the first one that fails. Nothing
+// heard here is sent to Claude; the log records only pass or fail for each step.
+async function micTest(out, btn) {
+  const steps = [];
+  const show = (extra = "") => { out.innerHTML = `<ul class="mic-steps">${steps.map((s) => `<li class="${s.ok ? "ok" : s.ok === false ? "bad" : ""}">${s.ok ? "✓" : s.ok === false ? "✗" : "…"} ${esc(s.text)}</li>`).join("")}</ul>${extra}`; };
+  const done = (fix) => { btn.disabled = false; show(fix ? `<div class="notice ${steps.every((s) => s.ok) ? "info" : "bad"}">${esc(fix)}</div>` : ""); ledger.append("mic.test", { result: steps.map((s) => (s.ok ? "pass" : "fail")).join(","), steps: steps.length }); };
+  btn.disabled = true;
+  if (window.top !== window && !engine.token) { steps.push({ ok: false, text: "This copy runs inside claude.ai, which doesn't allow the microphone." }); return done("Open otter-web.html in Chrome or Edge instead; there I can hear you."); }
+  steps.push({ ok: listener.supported, text: listener.supported ? `This browser can turn speech into text (through ${recognitionVendor()}).` : "This browser can't turn speech into text." });
+  if (!listener.supported) return done("Use Google Chrome or Microsoft Edge. Firefox and some managed browsers don't offer speech to text.");
+  if (listener.active) listener.stop();
+  steps.push({ text: "Asking for the microphone (allow it if Chrome asks)…" }); show();
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); steps[1] = { ok: true, text: "Microphone allowed." }; }
+  catch (e) {
+    const name = e.name || "";
+    steps[1] = { ok: false, text: name === "NotFoundError" ? "No microphone found." : name === "NotAllowedError" ? "The microphone is blocked." : `The microphone couldn't start (${name || e.message}).` };
+    return done(name === "NotFoundError" ? "Plug in or turn on a microphone (or headset), check it's the default input in your computer's sound settings, then test again."
+      : name === "NotAllowedError" ? "Click the icon at the left of the address bar, set Microphone to Allow, reload, and test again. If it's greyed out, your computer's privacy settings (Windows: Settings > Privacy > Microphone; Mac: System Settings > Privacy & Security > Microphone) or IT policy are blocking Chrome."
+      : "Close other apps using the microphone (Teams, Zoom), then test again.");
+  }
+  steps.push({ text: "Say something for two seconds…" }); show();
+  let peak = 0;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const an = ctx.createAnalyser(); ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    const until = Date.now() + 2000;
+    while (Date.now() < until) { an.getByteTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v - 128)); await new Promise((r) => setTimeout(r, 50)); }
+    ctx.close();
+  } catch {}
+  stream.getTracks().forEach((t) => t.stop());
+  steps[2] = peak > 6 ? { ok: true, text: "I can hear sound from the microphone." } : { ok: false, text: "The microphone is on but I heard almost nothing." };
+  if (peak <= 6) return done("Check the microphone isn't muted (a mute key or headset switch), turn up its input level in your computer's sound settings, or pick the right microphone: address bar icon > Site settings > Microphone.");
+  steps.push({ text: "Now say “Hey Otter, testing”…" }); show();
+  const rec = new listener.SR(); rec.lang = "en-US"; rec.interimResults = false;
+  const result = await new Promise((resolve) => {
+    let said = "", err = "";
+    const t = setTimeout(() => { try { rec.stop(); } catch {} }, 7000);
+    rec.onresult = (e) => { said = e.results[0][0].transcript; };
+    rec.onerror = (e) => { err = e.error; };
+    rec.onend = () => { clearTimeout(t); resolve({ said, err }); };
+    try { rec.start(); } catch (e) { clearTimeout(t); resolve({ said: "", err: e.message }); }
+  });
+  if (result.said) {
+    steps[3] = { ok: true, text: `Heard: “${result.said}”${parseWake(result.said).addressed ? " (and I recognised “Hey Otter”)." : "."}` };
+    return done(closedMode() ? "Everything works. Press the microphone to ask anything. To have me listen for “Hey Otter” without pressing, tick “Listen for Hey Otter” (closed-mode exception)." : "Everything works. Say “Hey Otter” and what you need.");
+  }
+  steps[3] = { ok: false, text: result.err === "network" ? `The speech service (${recognitionVendor()}) couldn't be reached.` : result.err === "not-allowed" || result.err === "service-not-allowed" ? "The speech service is blocked." : "The speech service didn't return any words." };
+  return done(result.err === "network" ? "Check the internet connection. On a managed network, IT may block the browser's speech service; typing still works."
+    : result.err?.includes("allowed") ? "Your browser's settings or IT policy block speech to text. Typing still works."
+    : "Speak a little closer and louder, then test again.");
+}
+
 function heard(t) {
   noteActivity();
   const pressed = pushToTalk;
@@ -1506,7 +1564,7 @@ function setMiniHint() {
   const el = $("miniHint");
   if (!el) return;
   const cap = capability("listen");
-  el.textContent = cap.status !== "ready" ? "Tap the chat bubble to type." : conversationLive ? (D.settings.wakeWord && D.settings.autoListen ? "Listening. Say “Otter”, then what you need." : "Listening.") : "Tap the microphone to talk.";
+  el.textContent = cap.status !== "ready" ? (listener.supported && (window.top === window || engine.token) ? "Tap the microphone to ask, or the bubble to type." : "Tap the chat bubble to type.") : conversationLive ? (D.settings.wakeWord && D.settings.autoListen ? "Listening. Say “Otter”, then what you need." : "Listening.") : "Tap the microphone to talk.";
   $("miniMic").classList.toggle("on", conversationLive);
   $("miniMic").setAttribute("aria-pressed", String(conversationLive));
   $("miniFloat").hidden = !canFloat() || !!pipWindow;
