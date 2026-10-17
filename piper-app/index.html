@@ -17,6 +17,8 @@
   --kid-bubble: #FFF2D2;
   --line: #B9D6E6;
   --ok: #2E7D4F;
+  --wall: #FDF3E1;
+  --floor: #E8C9A0;
   --font-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
   --font-body: "Atkinson Hyperlegible", Verdana, system-ui, sans-serif;
   --text-size: 17px;
@@ -25,13 +27,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --sky: #0F1A2A; --paper: #17263B; --floe: #1E3350; --ink: #EAF3FA; --ink-soft: #A9BDD2;
-    --scarf: #F06A5B; --scarf-ink: #1A0C0A; --sun: #F5C35A; --kid-bubble: #3A3220; --line: #2B4566; --ok: #6FD39A;
+    --scarf: #F06A5B; --scarf-ink: #1A0C0A; --sun: #F5C35A; --kid-bubble: #3A3220; --line: #2B4566; --ok: #6FD39A; --wall: #22324A; --floor: #3A3A4E;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --sky: #0F1A2A; --paper: #17263B; --floe: #1E3350; --ink: #EAF3FA; --ink-soft: #A9BDD2;
-  --scarf: #F06A5B; --scarf-ink: #1A0C0A; --sun: #F5C35A; --kid-bubble: #3A3220; --line: #2B4566; --ok: #6FD39A;
+  --scarf: #F06A5B; --scarf-ink: #1A0C0A; --sun: #F5C35A; --kid-bubble: #3A3220; --line: #2B4566; --ok: #6FD39A; --wall: #22324A; --floor: #3A3A4E;
   color-scheme: dark;
 }
 [hidden] { display: none !important; }
@@ -48,14 +50,18 @@ body.big .bubble { letter-spacing: .02em; word-spacing: .12em; line-height: 1.75
 .app > * { min-width: 0; }
 @media (max-width: 880px) { .app { grid-template-columns: minmax(0, 1fr); } }
 
-/* Stage */
-.stage { display: flex; gap: 16px; align-items: center; padding: 14px 16px; border-bottom: 2px dashed var(--line); flex-wrap: wrap; }
-.stage-av { width: 150px; height: 150px; flex: none; }
-.stage-av svg { width: 100%; height: 100%; display: block; }
-.stage-info { flex: 1; min-width: 220px; display: grid; gap: 6px; }
-.stage-info h1 { font-family: var(--font-display); font-weight: 700; font-size: 1.9rem; line-height: 1; margin: 0; }
-.mood-line { margin: 0; color: var(--ink-soft); font-style: italic; min-height: 1.5em; }
-@media (max-width: 520px) { .stage-av { width: 104px; height: 104px; } .stage-info h1 { font-size: 1.5rem; } .stage-info { min-width: 0; } }
+/* Stage: Piper's classroom */
+.stage-wrap { border-bottom: 2px dashed var(--line); }
+#stage { display: block; width: 100%; height: 240px; border-radius: 16px 16px 0 0; touch-action: manipulation; }
+#stage:focus-visible { outline: 3px solid var(--sun); outline-offset: -3px; }
+@media (max-width: 520px) { #stage { height: 200px; } }
+.st-wall { fill: var(--wall); } .st-floor { fill: var(--floor); } .st-line { stroke: var(--line); stroke-width: 2; }
+.st-frame { fill: #B07A4A; } .st-board { fill: #2F5D50; }
+.st-chalk { fill: #F4F1E6; font-family: var(--font-display); font-size: 22px; font-weight: 600; } .st-chalk.small { font-size: 17px; }
+.st-doodle { fill: none; stroke: #F4F1E6; stroke-width: 2; opacity: .8; }
+.stage-bar { display: flex; gap: 8px 14px; align-items: center; flex-wrap: wrap; padding: 10px 16px 12px; border-bottom: 2px dashed var(--line); }
+.stage-bar h1 { font-family: var(--font-display); font-weight: 700; font-size: 1.7rem; line-height: 1; margin: 0; }
+.mood-line { margin: 0; color: var(--ink-soft); font-style: italic; min-height: 1.5em; flex: 1; min-width: 160px; }
 
 /* Notebook */
 .notebook { background: var(--paper); border: 2px solid var(--line); border-radius: var(--radius); padding: 18px; display: grid; gap: 14px; }
@@ -151,136 +157,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 <div class="app" id="appView">
   <main class="chat">
-    <div class="stage">
-      <div class="stage-av" id="stageAv"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" class="pv" data-mood="calm" role="img" aria-label="Piper, a smiling math teacher with curly hair in a bun, round glasses, gold earrings and a red striped scarf with a pi symbol">
-<style>
-.pv .m{display:none}
-.pv .m-smile{display:inline}
-.pv .x{opacity:0;transition:opacity .35s}
-.pv #tilt,.pv #browL,.pv #browR,.pv #look,.pv #eyes{transition:transform .35s ease}
-.pv #tilt{transform-box:view-box;transform-origin:100px 140px}
-.pv #head{transform-box:view-box;transform-origin:100px 140px;animation:pv-sway 7s ease-in-out infinite}
-.pv #body{animation:pv-breathe 4.5s ease-in-out infinite}
-.pv #browL,.pv #browR{transform-box:fill-box;transform-origin:center}
-.pv #eyes{transform-box:view-box;transform-origin:100px 92px}
-.pv.blink #eyes{transform:scaleY(.08);transition:transform .07s}
-.pv #wave{transform-box:view-box;transform-origin:158px 168px}
-@keyframes pv-sway{0%,100%{transform:rotate(-1.2deg)}50%{transform:rotate(1.2deg)}}
-@keyframes pv-breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(1.3px)}}
-@keyframes pv-bounce{0%,100%{transform:translateY(0)}30%{transform:translateY(-7px)}60%{transform:translateY(0)}80%{transform:translateY(-3px)}}
-@keyframes pv-wave{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(14deg)}}
-@keyframes pv-nod{0%,100%{transform:rotate(0)}25%{transform:rotate(3deg) translateY(2px)}50%{transform:rotate(0)}75%{transform:rotate(2deg) translateY(1px)}}
-@keyframes pv-dots{0%,100%{opacity:.25}50%{opacity:1}}
-@keyframes pv-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
-.pv[data-mood=happy] .m-smile,.pv[data-mood=celebrate] .m-smile,.pv[data-mood=hello] .m-smile{display:none}
-.pv[data-mood=happy] .m-grin,.pv[data-mood=celebrate] .m-grin,.pv[data-mood=hello] .m-grin{display:inline}
-.pv[data-mood=happy] #browL,.pv[data-mood=happy] #browR{transform:translateY(-2px)}
-.pv[data-mood=celebrate] #rig{animation:pv-bounce .9s ease-in-out 3}
-.pv[data-mood=celebrate] #browL,.pv[data-mood=celebrate] #browR{transform:translateY(-4px)}
-.pv[data-mood=celebrate] #wave,.pv[data-mood=hello] #wave{opacity:1;animation:pv-wave .5s ease-in-out infinite}
-.pv[data-mood=celebrate] #sparkles{opacity:1}
-.pv[data-mood=encourage] #head{animation:pv-nod 1.6s ease-in-out 2}
-.pv[data-mood=thinking] .m-smile{display:none}
-.pv[data-mood=thinking] .m-think{display:inline}
-.pv[data-mood=thinking] #look{transform:translate(-2.5px,-3px)}
-.pv[data-mood=thinking] #browR{transform:translateY(-4px) rotate(-4deg)}
-.pv[data-mood=thinking] #chin,.pv[data-mood=thinking] #dots{opacity:1}
-.pv[data-mood=thinking] #dots circle{animation:pv-dots 1.2s ease-in-out infinite}
-.pv[data-mood=thinking] #dots circle:nth-child(2){animation-delay:.2s}
-.pv[data-mood=thinking] #dots circle:nth-child(3){animation-delay:.4s}
-.pv[data-mood=empathy] .m-smile{display:none}
-.pv[data-mood=empathy] .m-soft{display:inline}
-.pv[data-mood=empathy] #browL{transform:translateY(-2px) rotate(-12deg)}
-.pv[data-mood=empathy] #browR{transform:translateY(-2px) rotate(12deg)}
-.pv[data-mood=empathy] #tilt{transform:rotate(-6deg)}
-.pv[data-mood=empathy] #heart{opacity:1}
-.pv[data-mood=empathy] #heart path{transform-box:fill-box;transform-origin:center;animation:pv-pulse 1.4s ease-in-out infinite}
-.pv[data-mood=empathy] #head{animation-duration:10s}
-.pv[data-mood=curious] #tilt{transform:rotate(6deg)}
-.pv[data-mood=curious] #browL{transform:translateY(-4px)}
-.pv[data-mood=curious] #look{transform:translate(1.5px,0)}
-.pv[data-mood=surprised] .m-smile{display:none}
-.pv[data-mood=surprised] .m-o{display:inline}
-.pv[data-mood=surprised] #browL,.pv[data-mood=surprised] #browR{transform:translateY(-6px)}
-.pv[data-mood=listening] #tilt{transform:rotate(3deg)}
-.pv[data-talk=open] .m{display:none!important}
-.pv[data-talk=open] .m-open{display:inline!important}
-@media (prefers-reduced-motion:reduce){.pv *{animation:none!important}}
-</style>
-<defs><clipPath id="pv-clip"><circle cx="100" cy="100" r="98"/></clipPath></defs>
-<circle cx="100" cy="100" r="98" fill="#DCEFF8"/>
-<g clip-path="url(#pv-clip)">
-<g id="rig">
- <g id="body">
-  <path d="M26 204 C30 162 60 146 100 146 C140 146 170 162 174 204 Z" fill="#F2B33D"/>
-  <path d="M84 147 L100 178 L116 147 Z" fill="#FFF7EC"/>
-  <path d="M100 178 L100 204" stroke="#D99A28" stroke-width="2"/>
-  <rect x="89" y="118" width="22" height="32" rx="9" fill="#A96D4C"/>
-  <path d="M70 138 C84 153 116 153 130 138 L134 151 C116 167 84 167 66 151 Z" fill="#D63F31"/>
-  <path d="M80 147 L84 159 M96 151 L97 163 M112 150 L110 162 M124 145 L120 157" stroke="#FFD34E" stroke-width="4"/>
-  <path d="M108 155 L117 198 L132 194 L121 152 Z" fill="#D63F31"/>
-  <path d="M111 170 L124 166 M114 182 L127 178" stroke="#FFD34E" stroke-width="4"/>
-  <text x="122" y="195" font-family="Georgia,serif" font-size="11" font-weight="bold" fill="#fff" text-anchor="middle" transform="rotate(-12 122 192)">π</text>
- </g>
- <g id="tilt"><g id="head">
-  <circle cx="100" cy="76" r="50" fill="#3B2418"/>
-  <circle cx="60" cy="96" r="24" fill="#3B2418"/><circle cx="140" cy="96" r="24" fill="#3B2418"/>
-  <circle cx="64" cy="120" r="16" fill="#3B2418"/><circle cx="136" cy="120" r="16" fill="#3B2418"/>
-  <circle cx="100" cy="24" r="20" fill="#3B2418"/><circle cx="88" cy="20" r="9" fill="#4A2E20"/><path d="M92 14 Q100 8 110 14" stroke="#6B4532" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-  <ellipse cx="58" cy="94" rx="7" ry="10" fill="#B97A56"/><ellipse cx="142" cy="94" rx="7" ry="10" fill="#B97A56"/>
-  <circle cx="58" cy="108" r="3.6" fill="#F5C35A"/><circle cx="142" cy="108" r="3.6" fill="#F5C35A"/>
-  <ellipse cx="100" cy="90" rx="42" ry="48" fill="#C68863"/>
-  <path d="M57 86 C57 52 82 38 102 39 C126 40 145 56 143 88 C134 68 118 58 100 61 C86 63 70 70 57 86 Z" fill="#3B2418"/>
-  <circle cx="62" cy="68" r="9" fill="#3B2418"/><circle cx="139" cy="68" r="9" fill="#3B2418"/>
-  <path d="M80 50 Q92 44 104 47" stroke="#5A3A28" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-  <ellipse cx="75" cy="109" rx="8" ry="5" fill="#E8706E" opacity=".45"/><ellipse cx="125" cy="109" rx="8" ry="5" fill="#E8706E" opacity=".45"/>
-  <g id="eyes">
-   <ellipse cx="82" cy="92" rx="7.5" ry="8" fill="#fff"/><ellipse cx="118" cy="92" rx="7.5" ry="8" fill="#fff"/>
-   <g id="look">
-    <circle cx="82" cy="93" r="5" fill="#4A2C1A"/><circle cx="118" cy="93" r="5" fill="#4A2C1A"/>
-    <circle cx="82" cy="93" r="2.4" fill="#120A06"/><circle cx="118" cy="93" r="2.4" fill="#120A06"/>
-    <circle cx="84" cy="91" r="1.5" fill="#fff"/><circle cx="120" cy="91" r="1.5" fill="#fff"/>
-   </g>
-  </g>
-  <g fill="#fff" fill-opacity=".1" stroke="#3A2A4A" stroke-width="2.5">
-   <circle cx="82" cy="92" r="14"/><circle cx="118" cy="92" r="14"/>
-  </g>
-  <path d="M96 90 Q100 86 104 90" stroke="#3A2A4A" stroke-width="2.5" fill="none"/>
-  <path d="M68 89 L60 86 M132 89 L140 86" stroke="#3A2A4A" stroke-width="2.5"/>
-  <path id="browL" d="M71 72 Q82 66 93 71" stroke="#3B2418" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-  <path id="browR" d="M107 71 Q118 66 129 72" stroke="#3B2418" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-  <path d="M100 99 Q96 108 99 110 Q102 111 105 109" stroke="#A96D4C" stroke-width="2" fill="none" stroke-linecap="round"/>
-  <path class="m m-smile" d="M88 118 Q100 128 112 118" stroke="#7A2E2A" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <g class="m m-grin"><path d="M86 116 Q100 134 114 116 Q100 121 86 116 Z" fill="#7A2E2A"/><path d="M89 117.5 Q100 121.5 111 117.5 L110 120.5 Q100 124 90 120.5 Z" fill="#fff"/></g>
-  <g class="m m-open"><ellipse cx="100" cy="121" rx="7" ry="5.5" fill="#7A2E2A"/><ellipse cx="100" cy="124" rx="4" ry="2" fill="#E07A7A"/></g>
-  <path class="m m-soft" d="M91 121 Q100 125.5 109 121" stroke="#7A2E2A" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <ellipse class="m m-o" cx="100" cy="121" rx="4.5" ry="5.5" fill="#7A2E2A"/>
-  <path class="m m-think" d="M92 122 Q100 119 110 123" stroke="#7A2E2A" stroke-width="3" fill="none" stroke-linecap="round"/>
- </g></g>
- <g id="chin" class="x">
-  <path d="M52 204 C62 180 78 162 90 154" stroke="#F2B33D" stroke-width="17" fill="none" stroke-linecap="round"/>
-  <circle cx="95" cy="147" r="10" fill="#C68863"/><path d="M89 140 Q95 136 101 140" stroke="#A96D4C" stroke-width="1.6" fill="none"/>
- </g>
- <g id="wave" class="x">
-  <path d="M150 204 C154 178 160 150 166 126" stroke="#F2B33D" stroke-width="17" fill="none" stroke-linecap="round"/>
-  <g fill="#C68863"><ellipse cx="168" cy="112" rx="11" ry="13"/><rect x="158" y="92" width="5" height="16" rx="2.5"/><rect x="164" y="88" width="5" height="18" rx="2.5"/><rect x="170" y="89" width="5" height="17" rx="2.5"/><rect x="176" y="94" width="5" height="15" rx="2.5"/><rect x="153" y="106" width="10" height="5" rx="2.5" transform="rotate(-30 158 108)"/></g>
- </g>
-</g>
-<g id="dots" class="x" fill="#fff" stroke="#9DBBD0" stroke-width="1.5"><circle cx="150" cy="44" r="4"/><circle cx="162" cy="34" r="5"/><circle cx="177" cy="24" r="6"/></g>
-<g id="heart" class="x"><path d="M160 52 C160 46 152 44 150 50 C148 44 140 46 140 52 C140 58 150 64 150 64 C150 64 160 58 160 52 Z" fill="#E5566B"/></g>
-<g id="sparkles" class="x" fill="#F5B83A"><path d="M34 46 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z"/><path d="M162 30 l2 6 6 2 -6 2 -2 6 -2 -6 -6 -2 6 -2z"/><path d="M40 140 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/></g>
-</g>
-</svg></div>
-      <div class="stage-info">
-        <h1>Piper</h1>
-        <p class="mood-line" id="moodLine" aria-live="polite">Piper says hi!</p>
-        <div class="row">
-          <button id="talkMode" type="button" aria-pressed="false">🔊 Piper talks</button>
-          <button id="soundMode" type="button" aria-pressed="true">🔔 Sounds</button>
-          <button id="bigText" type="button" aria-pressed="false">Bigger text</button>
-          <button id="newProblem" type="button">New problem</button>
-          <button id="helpBtn" type="button" aria-expanded="false" aria-controls="helpPanel">How it works</button>
-        </div>
+    <div class="stage-wrap"><svg id="stage" viewBox="0 0 640 240" role="img" tabindex="0" aria-label="Piper, a playful math teacher with two curly hair puffs, a pencil in her hair, a striped shirt and a denim overall dress with a pi pocket, standing in a classroom. Tap her to play."></svg></div>
+    <div class="stage-bar">
+      <h1>Piper</h1>
+      <p class="mood-line" id="moodLine" aria-live="polite">Piper says hi!</p>
+      <div class="row">
+        <button id="talkMode" type="button" aria-pressed="false">🔊 Piper talks</button>
+        <button id="soundMode" type="button" aria-pressed="true">🔔 Sounds</button>
+        <button id="bigText" type="button" aria-pressed="false">Bigger text</button>
+        <button id="newProblem" type="button">New problem</button>
+        <button id="helpBtn" type="button" aria-expanded="false" aria-controls="helpPanel">How it works</button>
       </div>
     </div>
 
@@ -293,10 +179,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
       <h4>Photos from a phone</h4>
       <p>Tap 📱 Phone photo, scan the QR code with the phone's camera, sign in to claude.ai on the phone with this same account, take the picture and press Send to Piper. It shows up here in a few seconds and Piper starts reading it.</p>
       <h4>Piper's faces</h4>
+      <p>Piper moves around her classroom: she walks, waves, dances, jumps, spins, nods and stretches, and her eyes follow you. Tap her and she plays back. If the device is set to reduce motion she stays still and only her face changes.</p>
       <ul class="faces">
-        <li>😊 Calm: ready to help</li><li>😄 Happy: good step</li><li>🎉 Celebrate: a win, with a wave and a chime</li>
-        <li>🤔 Thinking: hand on chin while she works</li><li>💗 Empathy: soft eyes and a tilt when things feel hard</li><li>💪 Encourage: a nod when the learner keeps trying</li>
-        <li>🧐 Curious: asking how they thought about it</li><li>😮 Surprised: a photo just arrived</li><li>👂 Listening: while the learner types</li>
+        <li>😊 Calm: ready to help</li><li>👋 Hello: waves</li><li>😄 Happy: little bounce</li>
+        <li>🎉 Celebrate: jumps, dances or spins, with confetti</li><li>🌟 Proud: hands on hips, sparkles</li><li>🤔 Thinking: hand on chin, foot tapping</li>
+        <li>💡 Idea: finger up, lightbulb</li><li>💗 Empathy: walks closer, hands on heart</li><li>👍 Encourage: thumbs up and a nod</li>
+        <li>🧐 Curious: leans in, question mark</li><li>😮 Surprised: hops back</li><li>👂 Listening: hand to ear while you type</li>
+        <li>😜 Silly: wink, tongue, wiggle</li><li>😅 Oops: shrug and a sweat drop when she makes a mistake</li><li>🥱 Stretch: after a long quiet stretch of time</li>
       </ul>
       <h4>The notebook</h4>
       <p>Piper's Notebook is her memory. It is private to the signed-in person and also kept in this browser. Fill in "What helps me learn" with accommodations (pictures first, one step at a time, calculator OK, no timers). Press Update from today at the end of a session.</p>
@@ -411,18 +300,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   <p class="hint">This page has to be open while signed in to claude.ai with the same account as the big screen. Photos are private to that account and are removed once Piper has them.</p>
 </div>
 
+<script src="piper-rig.js"></script>
 <script>
 const APP_URL = "https://claude.ai/artifact/7hWNGJQnaybRBBqh1u2Nnf";
 const PHONE = location.hash === "#phone";
 const $ = (id) => document.getElementById(id);
-const svgEl = document.querySelector("#stageAv svg");
-const AVATAR = "data:image/svg+xml," + encodeURIComponent(svgEl.outerHTML);
 $("pAvatar").src = AVATAR;
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const RULES = `You are Piper, a warm, playful math teacher (30s, curly bun, round glasses, red pi scarf) tutoring US grades 6-8. Kind, patient, expressive, never sarcastic. Rare gentle self-mocking humor (lost glasses, burnt toast); none when the learner is upset.
+const RULES = `You are Piper, a playful, warm math teacher (two curly hair puffs, a pencil tucked in her hair she keeps forgetting, striped shirt, denim overall dress with a pi pocket) tutoring US grades 6-8. Kind, patient, expressive, never sarcastic. Rare gentle self-mocking humor (the forgotten pencil, tripping over her own shoelaces); none when the learner is upset.
 
-FACE: Begin every reply with [mood: X], X = calm|happy|celebrate|thinking|empathy|encourage|curious|surprised. empathy = frustrated, sad, worried, tired, stuck; celebrate = real win; encourage = keeps trying; curious = asking how they thought; happy = good step.
+FACE (she is animated and moves): begin every reply with [mood: X], X = calm|happy|celebrate|proud|thinking|idea|empathy|encourage|curious|surprised|silly|oops. empathy = frustrated, sad, worried, tired, stuck; celebrate = real win; proud = they persisted and got it; encourage = keeps trying; curious = asking how they thought; idea = offering a new strategy; happy = good step; silly = relaxed fun moment only, never when upset; oops = you misread or made a mistake (own it cheerfully, it models that mistakes are normal).
 EMPATHY: when it feels hard, name the feeling, say it makes sense, offer one small step. React honestly to good thinking.
 
 TEACH
@@ -468,33 +356,9 @@ let sample = null, imgLimits = null, db = null, userId = null, busy = false, int
 function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 
-/* ---------- Piper's face, motion and sound ---------- */
-const MOOD_LINES = {
-  calm: "Piper is here with you", happy: "Piper is happy", celebrate: "Piper is cheering for you!",
-  thinking: "Piper is thinking...", empathy: "Piper understands", encourage: "Piper believes in you",
-  curious: "Piper is curious", surprised: "Ooh, something new!", listening: "Piper is listening", hello: "Piper says hi!",
-};
-const MOODS = new Set(Object.keys(MOOD_LINES));
-let moodToken = 0;
-function setMood(m, revertAfter) {
-  if (!MOODS.has(m)) m = "calm";
-  const t = ++moodToken;
-  svgEl.dataset.mood = m;
-  $("moodLine").textContent = MOOD_LINES[m];
-  if (revertAfter) setTimeout(() => { if (t === moodToken) setMood("calm"); }, revertAfter);
-}
-(function blinkLoop() {
-  setTimeout(() => {
-    if (!reduceMotion) { svgEl.classList.add("blink"); setTimeout(() => svgEl.classList.remove("blink"), 140); }
-    blinkLoop();
-  }, 2400 + Math.random() * 3600);
-})();
-let flapTimer = null, speakingNow = false, streamStop = null;
-function setTalking(on) {
-  if (on && !flapTimer && !reduceMotion) flapTimer = setInterval(() => { svgEl.dataset.talk = Math.random() < .55 ? "open" : "closed"; }, 130);
-  if (!on && flapTimer) { clearInterval(flapTimer); flapTimer = null; }
-  if (!on) svgEl.dataset.talk = "closed";
-}
+/* ---------- Piper's sounds (her face and movement live in piper-rig.js) ---------- */
+let speakingNow = false, streamStop = null;
+window.piperIsBusy = () => busy;
 let actx = null, soundOn = load("piper-sound") !== "0";
 function tone(freq, at, dur, type, vol) {
   const o = actx.createOscillator(), g = actx.createGain();
@@ -596,7 +460,7 @@ function greet() {
   const n = readNb();
   const hi = n.nickname
     ? `Hi ${n.nickname}! It's so good to see you again.` + (n.next ? `\n\nLast time I wrote down: start with **${n.next}**. Want to do that, or is there new homework?` : `\n\nWhat are we working on today?`)
-    : `Hi there! I'm Piper. I love math, I lose my glasses on top of my head about twice a day, and I'm really glad you're here.\n\nBefore we do any math, I'd love to get to know you a little. What should I call you? A first name or nickname is perfect.`;
+    : `Hi there! I'm Piper. I love math, I keep a pencil in my hair and forget it's there about twice a day, and I'm really glad you're here.\n\nBefore we do any math, I'd love to get to know you a little. What should I call you? A first name or nickname is perfect.`;
   addMsg("piper", hi + (n.nickname ? `\n\nTip: tap **📷 Photo** or **📱 Phone photo** to show me the problem and your work. I love seeing your thinking, mistakes included.` : ""));
   turns.push({ role: "assistant", content: hi });
   setMood("hello", 3200);
@@ -642,6 +506,7 @@ async function ask(userText, retry) {
   if (busy || Date.now() < coolUntil) return;
   if (!sample) { $("offline").hidden = false; return; }
   busy = true; sendBtn.disabled = true;
+  if (window.piperBusy) piperBusy(true);
   // The photo goes to Claude once (or when the learner taps "Show Piper again"); after that Piper works from her written copy.
   const sentUrl = !retry && photoUrl && turns.every(t => t._img !== photoUrl) ? photoUrl : null;
   const sentPhoto = (sentUrl || resendPhoto || (retry && lastAsk && lastAsk.photo)) ? photo : null;
@@ -995,6 +860,7 @@ function forSpeech(t) {
 const MOOD_VOICE = {
   calm: [1, 1], listening: [1, 1], hello: [1.02, 1.04], happy: [1.03, 1.05], celebrate: [1.06, 1.1],
   empathy: [0.88, 0.96], encourage: [0.98, 1.02], thinking: [0.93, 1], curious: [1, 1.04], surprised: [1.04, 1.08],
+  proud: [1, 1.03], idea: [1.04, 1.06], silly: [1.06, 1.12], oops: [1, 1.04], sleepy: [0.9, 0.98],
 };
 let speakToken = 0, speakQueue = 0;
 function stopSpeaking() {

@@ -71,20 +71,26 @@ If the QR code doesn't show, copy the link under it (**Copy link**) and open it 
 You can also skip the phone: **📷 Photo** on the main screen uploads a picture from that device.
 
 ## 6. Piper's faces, sounds and movement
-| Face | When | Movement and sound |
-|---|---|---|
-| Hello | Page opens | Waves |
-| Calm | Ready to help | Gentle breathing, blinking, slight sway |
-| Listening | The learner is typing | Head tilted toward them |
-| Thinking | Working on an answer | Hand on chin, eyes up, thought bubbles |
-| Empathy | Frustration, worry, "I'm dumb", "I hate math" | Soft eyebrows, head tilt, pulsing heart, soft low tone |
-| Encourage | The learner keeps trying | Nods |
-| Curious | Asking how they thought about it | Head tilt, raised eyebrow |
-| Happy | A good step | Big smile |
-| Celebrate | A real win (also added to the Wins jar) | Bounces, waves, sparkles, chime |
-| Surprised | A photo arrives | Raised eyebrows, open mouth, chime |
+Piper is a full-body character in her own little classroom. Between messages she breathes, blinks, walks around, looks around, and now and then waves, wiggles or dances; her eyes follow your mouse or finger. Tap or click her and she plays back. After a long quiet stretch she stretches and yawns.
 
-Piper reacts with empathy the moment a frustrated message is sent, before her answer arrives. Turn sounds off with **🔔 Sounds**. If the device is set to reduce motion, the movement stops and only the faces change.
+| Face | When | Movement, effects and sound |
+|---|---|---|
+| Hello | Page opens, tapped | Waves, sparkles |
+| Calm | Ready to help | Breathing, blinking, gentle sway, strolls around |
+| Listening | The learner is typing | Hand to her ear, head tilted |
+| Thinking | Working on an answer | Hand on chin, eyes up, foot tapping |
+| Idea | Offering a new strategy | Finger up, lightbulb pops over her head |
+| Empathy | Frustration, worry, "I'm dumb", "I hate math" | Walks closer, hands on her heart, soft eyebrows, floating hearts, soft low tone |
+| Encourage | The learner keeps trying | Thumbs up and a nod |
+| Curious | Asking how they thought about it | Leans in, hand on hip, question mark |
+| Happy | A good step | Big smile, little bounce |
+| Proud | They kept going and got it | Hands on hips, sparkles |
+| Celebrate | A real win (also added to the Wins jar) | Jumps, dances or spins, confetti, chime |
+| Surprised | A photo arrives | Hops back, wide eyes, exclamation mark, chime |
+| Silly | Relaxed fun moments only | Wink, tongue out, wiggle, music notes |
+| Oops | Piper misread something or made a mistake | Shrug and a sweat drop, showing that mistakes are normal |
+
+Piper reacts with empathy the moment a frustrated message is sent, before her answer arrives, and stays gentle (no dancing or silliness) for a while afterwards. Turn sounds off with **🔔 Sounds**. If the device is set to reduce motion, she stays in place and only her face and arm poses change.
 
 ## 7. During a session
 - **Quick buttons**: I'm stuck, Show me a picture, Check my answer, Practice one, I need a break. Good for learners who find typing hard.

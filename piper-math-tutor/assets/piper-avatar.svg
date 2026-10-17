@@ -1,119 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" class="pv" data-mood="calm" role="img" aria-label="Piper, a smiling math teacher with curly hair in a bun, round glasses, gold earrings and a red striped scarf with a pi symbol">
-<style>
-.pv .m{display:none}
-.pv .m-smile{display:inline}
-.pv .x{opacity:0;transition:opacity .35s}
-.pv #tilt,.pv #browL,.pv #browR,.pv #look,.pv #eyes{transition:transform .35s ease}
-.pv #tilt{transform-box:view-box;transform-origin:100px 140px}
-.pv #head{transform-box:view-box;transform-origin:100px 140px;animation:pv-sway 7s ease-in-out infinite}
-.pv #body{animation:pv-breathe 4.5s ease-in-out infinite}
-.pv #browL,.pv #browR{transform-box:fill-box;transform-origin:center}
-.pv #eyes{transform-box:view-box;transform-origin:100px 92px}
-.pv.blink #eyes{transform:scaleY(.08);transition:transform .07s}
-.pv #wave{transform-box:view-box;transform-origin:158px 168px}
-@keyframes pv-sway{0%,100%{transform:rotate(-1.2deg)}50%{transform:rotate(1.2deg)}}
-@keyframes pv-breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(1.3px)}}
-@keyframes pv-bounce{0%,100%{transform:translateY(0)}30%{transform:translateY(-7px)}60%{transform:translateY(0)}80%{transform:translateY(-3px)}}
-@keyframes pv-wave{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(14deg)}}
-@keyframes pv-nod{0%,100%{transform:rotate(0)}25%{transform:rotate(3deg) translateY(2px)}50%{transform:rotate(0)}75%{transform:rotate(2deg) translateY(1px)}}
-@keyframes pv-dots{0%,100%{opacity:.25}50%{opacity:1}}
-@keyframes pv-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
-.pv[data-mood=happy] .m-smile,.pv[data-mood=celebrate] .m-smile,.pv[data-mood=hello] .m-smile{display:none}
-.pv[data-mood=happy] .m-grin,.pv[data-mood=celebrate] .m-grin,.pv[data-mood=hello] .m-grin{display:inline}
-.pv[data-mood=happy] #browL,.pv[data-mood=happy] #browR{transform:translateY(-2px)}
-.pv[data-mood=celebrate] #rig{animation:pv-bounce .9s ease-in-out 3}
-.pv[data-mood=celebrate] #browL,.pv[data-mood=celebrate] #browR{transform:translateY(-4px)}
-.pv[data-mood=celebrate] #wave,.pv[data-mood=hello] #wave{opacity:1;animation:pv-wave .5s ease-in-out infinite}
-.pv[data-mood=celebrate] #sparkles{opacity:1}
-.pv[data-mood=encourage] #head{animation:pv-nod 1.6s ease-in-out 2}
-.pv[data-mood=thinking] .m-smile{display:none}
-.pv[data-mood=thinking] .m-think{display:inline}
-.pv[data-mood=thinking] #look{transform:translate(-2.5px,-3px)}
-.pv[data-mood=thinking] #browR{transform:translateY(-4px) rotate(-4deg)}
-.pv[data-mood=thinking] #chin,.pv[data-mood=thinking] #dots{opacity:1}
-.pv[data-mood=thinking] #dots circle{animation:pv-dots 1.2s ease-in-out infinite}
-.pv[data-mood=thinking] #dots circle:nth-child(2){animation-delay:.2s}
-.pv[data-mood=thinking] #dots circle:nth-child(3){animation-delay:.4s}
-.pv[data-mood=empathy] .m-smile{display:none}
-.pv[data-mood=empathy] .m-soft{display:inline}
-.pv[data-mood=empathy] #browL{transform:translateY(-2px) rotate(-12deg)}
-.pv[data-mood=empathy] #browR{transform:translateY(-2px) rotate(12deg)}
-.pv[data-mood=empathy] #tilt{transform:rotate(-6deg)}
-.pv[data-mood=empathy] #heart{opacity:1}
-.pv[data-mood=empathy] #heart path{transform-box:fill-box;transform-origin:center;animation:pv-pulse 1.4s ease-in-out infinite}
-.pv[data-mood=empathy] #head{animation-duration:10s}
-.pv[data-mood=curious] #tilt{transform:rotate(6deg)}
-.pv[data-mood=curious] #browL{transform:translateY(-4px)}
-.pv[data-mood=curious] #look{transform:translate(1.5px,0)}
-.pv[data-mood=surprised] .m-smile{display:none}
-.pv[data-mood=surprised] .m-o{display:inline}
-.pv[data-mood=surprised] #browL,.pv[data-mood=surprised] #browR{transform:translateY(-6px)}
-.pv[data-mood=listening] #tilt{transform:rotate(3deg)}
-.pv[data-talk=open] .m{display:none!important}
-.pv[data-talk=open] .m-open{display:inline!important}
-@media (prefers-reduced-motion:reduce){.pv *{animation:none!important}}
-</style>
-<defs><clipPath id="pv-clip"><circle cx="100" cy="100" r="98"/></clipPath></defs>
-<circle cx="100" cy="100" r="98" fill="#DCEFF8"/>
-<g clip-path="url(#pv-clip)">
-<g id="rig">
- <g id="body">
-  <path d="M26 204 C30 162 60 146 100 146 C140 146 170 162 174 204 Z" fill="#F2B33D"/>
-  <path d="M84 147 L100 178 L116 147 Z" fill="#FFF7EC"/>
-  <path d="M100 178 L100 204" stroke="#D99A28" stroke-width="2"/>
-  <rect x="89" y="118" width="22" height="32" rx="9" fill="#A96D4C"/>
-  <path d="M70 138 C84 153 116 153 130 138 L134 151 C116 167 84 167 66 151 Z" fill="#D63F31"/>
-  <path d="M80 147 L84 159 M96 151 L97 163 M112 150 L110 162 M124 145 L120 157" stroke="#FFD34E" stroke-width="4"/>
-  <path d="M108 155 L117 198 L132 194 L121 152 Z" fill="#D63F31"/>
-  <path d="M111 170 L124 166 M114 182 L127 178" stroke="#FFD34E" stroke-width="4"/>
-  <text x="122" y="195" font-family="Georgia,serif" font-size="11" font-weight="bold" fill="#fff" text-anchor="middle" transform="rotate(-12 122 192)">π</text>
- </g>
- <g id="tilt"><g id="head">
-  <circle cx="100" cy="76" r="50" fill="#3B2418"/>
-  <circle cx="60" cy="96" r="24" fill="#3B2418"/><circle cx="140" cy="96" r="24" fill="#3B2418"/>
-  <circle cx="64" cy="120" r="16" fill="#3B2418"/><circle cx="136" cy="120" r="16" fill="#3B2418"/>
-  <circle cx="100" cy="24" r="20" fill="#3B2418"/><circle cx="88" cy="20" r="9" fill="#4A2E20"/><path d="M92 14 Q100 8 110 14" stroke="#6B4532" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-  <ellipse cx="58" cy="94" rx="7" ry="10" fill="#B97A56"/><ellipse cx="142" cy="94" rx="7" ry="10" fill="#B97A56"/>
-  <circle cx="58" cy="108" r="3.6" fill="#F5C35A"/><circle cx="142" cy="108" r="3.6" fill="#F5C35A"/>
-  <ellipse cx="100" cy="90" rx="42" ry="48" fill="#C68863"/>
-  <path d="M57 86 C57 52 82 38 102 39 C126 40 145 56 143 88 C134 68 118 58 100 61 C86 63 70 70 57 86 Z" fill="#3B2418"/>
-  <circle cx="62" cy="68" r="9" fill="#3B2418"/><circle cx="139" cy="68" r="9" fill="#3B2418"/>
-  <path d="M80 50 Q92 44 104 47" stroke="#5A3A28" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-  <ellipse cx="75" cy="109" rx="8" ry="5" fill="#E8706E" opacity=".45"/><ellipse cx="125" cy="109" rx="8" ry="5" fill="#E8706E" opacity=".45"/>
-  <g id="eyes">
-   <ellipse cx="82" cy="92" rx="7.5" ry="8" fill="#fff"/><ellipse cx="118" cy="92" rx="7.5" ry="8" fill="#fff"/>
-   <g id="look">
-    <circle cx="82" cy="93" r="5" fill="#4A2C1A"/><circle cx="118" cy="93" r="5" fill="#4A2C1A"/>
-    <circle cx="82" cy="93" r="2.4" fill="#120A06"/><circle cx="118" cy="93" r="2.4" fill="#120A06"/>
-    <circle cx="84" cy="91" r="1.5" fill="#fff"/><circle cx="120" cy="91" r="1.5" fill="#fff"/>
-   </g>
-  </g>
-  <g fill="#fff" fill-opacity=".1" stroke="#3A2A4A" stroke-width="2.5">
-   <circle cx="82" cy="92" r="14"/><circle cx="118" cy="92" r="14"/>
-  </g>
-  <path d="M96 90 Q100 86 104 90" stroke="#3A2A4A" stroke-width="2.5" fill="none"/>
-  <path d="M68 89 L60 86 M132 89 L140 86" stroke="#3A2A4A" stroke-width="2.5"/>
-  <path id="browL" d="M71 72 Q82 66 93 71" stroke="#3B2418" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-  <path id="browR" d="M107 71 Q118 66 129 72" stroke="#3B2418" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-  <path d="M100 99 Q96 108 99 110 Q102 111 105 109" stroke="#A96D4C" stroke-width="2" fill="none" stroke-linecap="round"/>
-  <path class="m m-smile" d="M88 118 Q100 128 112 118" stroke="#7A2E2A" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <g class="m m-grin"><path d="M86 116 Q100 134 114 116 Q100 121 86 116 Z" fill="#7A2E2A"/><path d="M89 117.5 Q100 121.5 111 117.5 L110 120.5 Q100 124 90 120.5 Z" fill="#fff"/></g>
-  <g class="m m-open"><ellipse cx="100" cy="121" rx="7" ry="5.5" fill="#7A2E2A"/><ellipse cx="100" cy="124" rx="4" ry="2" fill="#E07A7A"/></g>
-  <path class="m m-soft" d="M91 121 Q100 125.5 109 121" stroke="#7A2E2A" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <ellipse class="m m-o" cx="100" cy="121" rx="4.5" ry="5.5" fill="#7A2E2A"/>
-  <path class="m m-think" d="M92 122 Q100 119 110 123" stroke="#7A2E2A" stroke-width="3" fill="none" stroke-linecap="round"/>
- </g></g>
- <g id="chin" class="x">
-  <path d="M52 204 C62 180 78 162 90 154" stroke="#F2B33D" stroke-width="17" fill="none" stroke-linecap="round"/>
-  <circle cx="95" cy="147" r="10" fill="#C68863"/><path d="M89 140 Q95 136 101 140" stroke="#A96D4C" stroke-width="1.6" fill="none"/>
- </g>
- <g id="wave" class="x">
-  <path d="M150 204 C154 178 160 150 166 126" stroke="#F2B33D" stroke-width="17" fill="none" stroke-linecap="round"/>
-  <g fill="#C68863"><ellipse cx="168" cy="112" rx="11" ry="13"/><rect x="158" y="92" width="5" height="16" rx="2.5"/><rect x="164" y="88" width="5" height="18" rx="2.5"/><rect x="170" y="89" width="5" height="17" rx="2.5"/><rect x="176" y="94" width="5" height="15" rx="2.5"/><rect x="153" y="106" width="10" height="5" rx="2.5" transform="rotate(-30 158 108)"/></g>
- </g>
-</g>
-<g id="dots" class="x" fill="#fff" stroke="#9DBBD0" stroke-width="1.5"><circle cx="150" cy="44" r="4"/><circle cx="162" cy="34" r="5"/><circle cx="177" cy="24" r="6"/></g>
-<g id="heart" class="x"><path d="M160 52 C160 46 152 44 150 50 C148 44 140 46 140 52 C140 58 150 64 150 64 C150 64 160 58 160 52 Z" fill="#E5566B"/></g>
-<g id="sparkles" class="x" fill="#F5B83A"><path d="M34 46 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z"/><path d="M162 30 l2 6 6 2 -6 2 -2 6 -2 -6 -6 -2 6 -2z"/><path d="M40 140 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/></g>
-</g>
-</svg>
+<svg role="img" aria-label="Piper, a smiling math teacher with two curly hair puffs, a pencil in her hair, freckles and star earrings" xmlns="http://www.w3.org/2000/svg" viewBox="-50 -112 100 100"><circle cx="0" cy="-62" r="50" fill="#DCEFF8"/><g transform="translate(0,-8)"><rect x="-26" y="-14" width="52" height="30" rx="14" fill="#2BA3A0"/><rect x="-5.5" y="-22" width="11" height="12" fill="#9A5F40"/>
+    <g fill="#2B1810"><circle cx="-31" cy="-76" r="14"/><circle cx="-19.5" cy="-76.0" r="5.9"/><circle cx="-22.9" cy="-67.9" r="5.9"/><circle cx="-31.0" cy="-64.5" r="5.9"/><circle cx="-39.1" cy="-67.9" r="5.9"/><circle cx="-42.5" cy="-76.0" r="5.9"/><circle cx="-39.1" cy="-84.1" r="5.9"/><circle cx="-31.0" cy="-87.5" r="5.9"/><circle cx="-22.9" cy="-84.1" r="5.9"/><circle cx="31" cy="-76" r="14"/><circle cx="42.5" cy="-76.0" r="5.9"/><circle cx="39.1" cy="-67.9" r="5.9"/><circle cx="31.0" cy="-64.5" r="5.9"/><circle cx="22.9" cy="-67.9" r="5.9"/><circle cx="19.5" cy="-76.0" r="5.9"/><circle cx="22.9" cy="-84.1" r="5.9"/><circle cx="31.0" cy="-87.5" r="5.9"/><circle cx="39.1" cy="-84.1" r="5.9"/></g>
+    <ellipse cx="-23" cy="-66" rx="5" ry="3" fill="#F2766B" transform="rotate(-35 -23 -66)"/>
+    <ellipse cx="23" cy="-66" rx="5" ry="3" fill="#F2766B" transform="rotate(35 23 -66)"/>
+    <g transform="rotate(28 36 -84)"><rect x="33" y="-104" width="5" height="24" rx="1" fill="#FFD34E"/><rect x="33" y="-106" width="5" height="4" rx="1" fill="#F49AC2"/><path d="M33,-80 h5 l-2.5,5z" fill="#E8C9A0"/></g>
+    <ellipse cx="0" cy="-44" rx="38" ry="38" fill="#2B1810"/>
+    <circle cx="-35" cy="-27" r="8" fill="#2B1810"/><circle cx="35" cy="-27" r="8" fill="#2B1810"/>
+    <ellipse cx="-33" cy="-38" rx="5" ry="7" fill="#9A5F40"/><ellipse cx="33" cy="-38" rx="5" ry="7" fill="#9A5F40"/>
+    <path d="M-33,-31 l1.6,3.2 3.5,.5 -2.5,2.5 .6,3.5 -3.2,-1.7 -3.2,1.7 .6,-3.5 -2.5,-2.5 3.5,-.5z" fill="#F5C35A"/>
+    <path d="M33,-31 l1.6,3.2 3.5,.5 -2.5,2.5 .6,3.5 -3.2,-1.7 -3.2,1.7 .6,-3.5 -2.5,-2.5 3.5,-.5z" fill="#F5C35A"/>
+    <ellipse cx="0" cy="-40" rx="33" ry="35" fill="#B97A57"/>
+    <path d="M-34,-44 C-36,-80 36,-80 34,-44 C26,-60 12,-64 0,-62 C-12,-64 -26,-60 -34,-44 Z" fill="#2B1810"/>
+    <g fill="#2B1810"><circle cx="-23" cy="-61" r="5"/><circle cx="-13" cy="-65" r="5.5"/><circle cx="-2" cy="-66" r="5.5"/><circle cx="9" cy="-66" r="5.5"/><circle cx="20" cy="-62" r="5"/></g>
+    <ellipse id="blushL" cx="-20" cy="-27" rx="6.5" ry="3.8" fill="#F2768B" opacity=".35"/>
+    <ellipse id="blushR" cx="20" cy="-27" rx="6.5" ry="3.8" fill="#F2768B" opacity=".35"/>
+    <g fill="#9A5F40" opacity=".7"><circle cx="-24" cy="-33" r=".9"/><circle cx="-19" cy="-34" r=".9"/><circle cx="-21.5" cy="-30.5" r=".9"/><circle cx="24" cy="-33" r=".9"/><circle cx="19" cy="-34" r=".9"/><circle cx="21.5" cy="-30.5" r=".9"/></g>
+    
+    <g id="eyeL" transform="translate(-12,-42)">
+      <clipPath id="clipL"><ellipse rx="7.5" ry="9"/></clipPath>
+      <g id="eyeOpenL">
+        <ellipse rx="7.5" ry="9" fill="#fff"/>
+        <g id="irisL"><circle r="5.2" fill="#6B4226"/><circle r="2.5" fill="#160C06"/><circle cx="1.7" cy="-1.9" r="1.5" fill="#fff"/></g>
+        <rect id="lidL" clip-path="url(#clipL)" x="-9" y="-10" width="18" height="0" fill="#B97A57"/>
+        <path d="M-7,-4 l-3,-2.5" stroke="#2B1810" stroke-width="1.6" stroke-linecap="round"/>
+      </g>
+      <path id="eyeArcL" d="M-7,2 Q0,-7 7,2" stroke="#2B1810" stroke-width="2.6" fill="none" stroke-linecap="round" display="none"/>
+    </g>
+    <g id="eyeR" transform="translate(12,-42)">
+      <clipPath id="clipR"><ellipse rx="7.5" ry="9"/></clipPath>
+      <g id="eyeOpenR">
+        <ellipse rx="7.5" ry="9" fill="#fff"/>
+        <g id="irisR"><circle r="5.2" fill="#6B4226"/><circle r="2.5" fill="#160C06"/><circle cx="1.7" cy="-1.9" r="1.5" fill="#fff"/></g>
+        <rect id="lidR" clip-path="url(#clipR)" x="-9" y="-10" width="18" height="0" fill="#B97A57"/>
+        <path d="M7,-4 l3,-2.5" stroke="#2B1810" stroke-width="1.6" stroke-linecap="round"/>
+      </g>
+      <path id="eyeArcR" d="M-7,2 Q0,-7 7,2" stroke="#2B1810" stroke-width="2.6" fill="none" stroke-linecap="round" display="none"/>
+    </g>
+    <path id="browL" d="M-6,0 Q0,-3.6 6,0" stroke="#2B1810" stroke-width="3" fill="none" stroke-linecap="round" transform="translate(-12,-56)"/>
+    <path id="browR" d="M-6,0 Q0,-3.6 6,0" stroke="#2B1810" stroke-width="3" fill="none" stroke-linecap="round" transform="translate(12,-56)"/>
+    <path d="M-1.8,-32 Q0,-29.3 1.8,-32" stroke="#9A5F40" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+    <g transform="translate(0,-21)"><path d="M-10,-2 Q0,12 10,-2 Q0,2 -10,-2Z" fill="#7A2430"/><path d="M-8,-1 Q0,2.5 8,-1 L7.5,1.5 Q0,4.5 -7.5,1.5Z" fill="#fff"/></g>
+    <g id="talkMouth" transform="translate(0,-21)" display="none"><ellipse id="talkE" rx="5.5" ry="3" fill="#7A2430"/><ellipse id="talkT" cy="2" rx="3.4" ry="1.3" fill="#E9707A"/></g>
+    <path id="sweat" d="M31,-64 q-4.5,7.5 0,9.5 q4.5,-2 0,-9.5z" fill="#8FD3F4" stroke="#5BB4DE" stroke-width=".8" display="none"/></g></svg>
