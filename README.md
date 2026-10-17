@@ -4,7 +4,7 @@ An animated, emotionally expressive math teacher for grades 6 to 8, built on Cla
 
 <img src="piper-math-tutor/assets/piper-avatar.svg" width="180" alt="Piper, a smiling math teacher with curly hair in a bun, round glasses and a red scarf with a pi symbol">
 
-**App:** https://claude.ai/artifact/7hWNGJQnaybRBBqh1u2Nnf (private until shared)
+**App:** https://claude.ai/artifact/7hWNGJQnaybRBBqh1u2Nnf
 **Full setup and use guide:** [INSTRUCTIONS.md](INSTRUCTIONS.md)
 **Natural voice upgrade plan:** [VOICE-UPGRADE.md](VOICE-UPGRADE.md)
 
